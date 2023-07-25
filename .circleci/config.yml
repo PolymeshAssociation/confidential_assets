@@ -1,0 +1,141 @@
+version: 2
+jobs:
+  lint:
+    docker:
+      - image: polymeshassociation/rust:debian-nightly-2022-11-02
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - run:
+          name: Check formatting
+          command: ./scripts/lint.sh
+  build:
+    docker:
+      - image: polymeshassociation/rust:debian-nightly-2022-11-02
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - run:
+          name: Store rust version in an environment var for cache key
+          command: rustc --version > rust.version
+      - restore_cache:
+          keys:
+            - v2-nightly-cache-{{ checksum "./rust.version" }}
+            - v2-cli-cache-{{ checksum "./rust.version" }}
+      - run:
+          name: Build nightly
+          command: cargo build
+          no_output_timeout: 4h
+      - save_cache:
+          key: v2-nightly-cache-{{ checksum "./rust.version" }}
+          paths:
+            - "~/.cargo"
+            - "./target"
+  test:
+    docker:
+      - image: polymeshassociation/rust:debian-nightly-2022-11-02
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - run:
+          name: Store rust version in a file for cache key
+          command: rustc --version > rust.version
+      - restore_cache:
+          keys:
+            - v6-test-cache-{{ checksum "./rust.version" }}
+      - run:
+          name: Run tests
+          command: |
+            RUST_LOG=info cargo test
+
+            cd confidential-identity-v2/wasm
+            # install wasm-pack
+            cargo install --git https://github.com/rustwasm/wasm-pack wasm-pack
+            # install clang v11 and npm
+            apt update && apt install -y clang-11 npm
+            # build wasm module.
+            CC="clang-11" CXX="clang-11" wasm-pack build --dev --target nodejs
+
+            # Run JS tests.
+            cd examples
+            npm install
+            npm run test
+            
+          no_output_timeout: 30m
+      - save_cache:
+          key: v6-test-cache-{{ checksum "./rust.version" }}
+          paths:
+            - "~/.cargo"
+            - "./target"
+  build_wasm:
+    docker:
+      - image: polymeshassociation/rust:debian-nightly-2022-11-02
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - run:
+          name: Store rust version in a file for cache key
+          command: rustc --version > rust.version
+      - restore_cache:
+          keys:
+            - v6-test-cache-{{ checksum "./rust.version" }}
+      - run:
+          name: Build wasm
+          command: >-
+            echo "Wasm build (features 'no_std' & 'u32_backend')"  &&
+            cargo build --target wasm32-unknown-unknown --bench elgamal_decryption &&
+            cargo build --target wasm32-unknown-unknown --bench mercat_account &&
+            cargo build --target wasm32-unknown-unknown --bench mercat_asset &&
+            cargo build --target wasm32-unknown-unknown --bench mercat_transaction &&
+            cargo build --target wasm32-unknown-unknown --no-default-features --features no_std --features u32_backend &&
+          no_output_timeout: 30m
+      - save_cache:
+          key: v6-test-cache-{{ checksum "./rust.version" }}
+          paths:
+            - "~/.cargo"
+            - "./target"
+  bench:
+    docker:
+      - image: polymeshassociation/rust:debian-nightly-2022-11-02
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - run:
+          name: Store rust version in a file for cache key
+          command: rustc --version > rust.version
+      - restore_cache:
+          keys:
+            - v6-bench-cache-{{ checksum "./rust.version" }}
+      - run:
+          name: Run benchmarks 32bit balances.
+          command: cargo bench
+          no_output_timeout: 30m
+      - run:
+          name: Run benchmarks 64bit balances.
+          command: cargo bench --features balance_64
+          no_output_timeout: 30m
+      - save_cache:
+          key: v6-bench-cache-{{ checksum "./rust.version" }}
+          paths:
+            - "~/.cargo"
+            - "./target"
+workflows:
+  version: 2
+  lint-test-build:
+    jobs:
+      - lint
+      - test
+      - bench
+      - build:
+          requires:
+            - lint
+            - test
+          filters:
+            branches:
+              only:
+                - main
