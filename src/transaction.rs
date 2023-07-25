@@ -1,9 +1,6 @@
 use crate::{
-    Account, AmountSource, AuditorId, AuditorPayload, EncryptedAmount, EncryptionKeys,
-    EncryptionPubKey, FinalizedTransferTx, InitializedTransferTx, JustifiedTransferTx, PubAccount,
-    TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
-    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, TransferTxState,
-    TxSubstate,
+    elgamal::{encrypt_using_two_pub_keys, CommitmentWitness},
+    errors::{ErrorKind, Fallible},
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
@@ -17,10 +14,11 @@ use crate::{
         encryption_proofs::single_property_verifier,
         range_proof::{prove_within_range, verify_within_range},
     },
-    elgamal::{CommitmentWitness, encrypt_using_two_pub_keys},
-    errors::{ErrorKind, Fallible},
-    BALANCE_RANGE,
-    Balance, Scalar,
+    Account, AmountSource, AuditorId, AuditorPayload, Balance, EncryptedAmount, EncryptionKeys,
+    EncryptionPubKey, FinalizedTransferTx, InitializedTransferTx, JustifiedTransferTx, PubAccount,
+    Scalar, TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
+    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, TransferTxState,
+    TxSubstate, BALANCE_RANGE,
 };
 
 use rand_core::{CryptoRng, RngCore};
@@ -258,11 +256,7 @@ impl TransferTransactionMediator for CtxMediator {
 
         // Verify that the encrypted amount is correct.
         let amount = amount_source.get_amount(init_tx.memo.enc_amount_for_mediator.as_ref())?;
-        verify_amount_correctness(
-            &init_tx,
-            amount,
-            sender_account,
-        )?;
+        verify_amount_correctness(&init_tx, amount, sender_account)?;
 
         Ok(JustifiedTransferTx {})
     }
@@ -467,11 +461,7 @@ impl TransferTransactionAuditor for CtxAuditor {
                         .const_time_decrypt(&payload.encrypted_amount)?;
 
                     // Verify that the encrypted amount is correct.
-                    verify_amount_correctness(
-                        &init_tx,
-                        amount,
-                        sender_account,
-                    )?;
+                    verify_amount_correctness(&init_tx, amount, sender_account)?;
                 }
                 Ok(())
             })
@@ -491,15 +481,14 @@ mod tests {
     use super::*;
     use crate::{
         account::{deposit, withdraw},
-        EncryptedAmount, EncryptionKeys, EncryptionPubKey, SecAccount, TransferTxMemo,
+        elgamal::ElgamalSecretKey,
         proofs::{
             ciphertext_refreshment_proof::CipherEqualSamePubKeyProof,
             correctness_proof::CorrectnessProof,
             encrypting_same_value_proof::CipherEqualDifferentPubKeyProof,
             range_proof::InRangeProof,
         },
-        elgamal::ElgamalSecretKey,
-        Scalar,
+        EncryptedAmount, EncryptionKeys, EncryptionPubKey, Scalar, SecAccount, TransferTxMemo,
     };
     use rand::rngs::StdRng;
     use rand::SeedableRng;

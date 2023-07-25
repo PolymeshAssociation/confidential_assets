@@ -6,6 +6,8 @@
 //! whitepaper.
 
 use crate::{
+    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    elgamal::{CipherText, ElgamalPublicKey, ElgamalSecretKey},
     errors::{ErrorKind, Fallible},
     proofs::{
         encryption_proofs::{
@@ -14,10 +16,6 @@ use crate::{
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    elgamal::{
-        CipherText, ElgamalPublicKey, ElgamalSecretKey,
-    },
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
 };
 
 use bulletproofs::PedersenGens;
@@ -256,10 +254,7 @@ impl<'a> AssetProofVerifier for CipherTextRefreshmentVerifier<'a> {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-      proofs::*,
-      elgamal::ElgamalSecretKey,
-    };
+    use crate::{elgamal::ElgamalSecretKey, proofs::*};
     use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 

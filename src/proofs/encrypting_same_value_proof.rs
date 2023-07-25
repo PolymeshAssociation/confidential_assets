@@ -3,6 +3,8 @@
 //! For more details see section 5.4 of the whitepaper.
 
 use crate::{
+    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{ErrorKind, Fallible},
     proofs::{
         encryption_proofs::{
@@ -11,10 +13,6 @@ use crate::{
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    elgamal::{
-        CipherText, CommitmentWitness, ElgamalPublicKey,
-    },
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
 };
 
 use bulletproofs::PedersenGens;
@@ -259,10 +257,7 @@ impl<'a> AssetProofVerifier for EncryptingSameValueVerifier<'a> {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-        proofs::*,
-        elgamal::ElgamalSecretKey,
-    };
+    use crate::{elgamal::ElgamalSecretKey, proofs::*};
     use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 

@@ -1,9 +1,9 @@
 mod utility;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use confidential_assets::{
     account::{AccountCreator, AccountValidator},
     AccountCreatorInitializer, AccountCreatorVerifier,
 };
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::thread_rng;
 
 const IDS: [u32; 5] = [10, 20, 300, 4000, 65535];

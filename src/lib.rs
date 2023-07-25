@@ -23,22 +23,19 @@ pub(crate) mod macros;
 
 pub mod errors;
 
-pub mod proofs;
-pub mod elgamal;
 pub mod codec_wrapper;
+pub mod elgamal;
+pub mod proofs;
 
-pub use proofs::{
-    ciphertext_refreshment_proof::CipherEqualSamePubKeyProof,
-    correctness_proof::CorrectnessProof,
-    encrypting_same_value_proof::CipherEqualDifferentPubKeyProof,
-    range_proof::InRangeProof,
-    wellformedness_proof::WellformednessProof,
-};
 pub use elgamal::{
-    CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey,
-    ElgamalSecretKey,
+    CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
 };
 pub use errors::{ErrorKind, Fallible};
+pub use proofs::{
+    ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,
+    encrypting_same_value_proof::CipherEqualDifferentPubKeyProof, range_proof::InRangeProof,
+    wellformedness_proof::WellformednessProof,
+};
 
 /// The balance value to keep confidential.
 ///

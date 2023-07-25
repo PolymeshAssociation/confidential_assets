@@ -197,8 +197,8 @@ mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
     use crate::{
-        errors::ErrorKind,
         elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey},
+        errors::ErrorKind,
         proofs::{
             correctness_proof::{
                 CorrectnessFinalResponse, CorrectnessInitialMessage,

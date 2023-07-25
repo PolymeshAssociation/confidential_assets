@@ -69,9 +69,7 @@ lazy_static::lazy_static! {
 impl DiscreteLog {
     /// Discrete log instance constructor.
     pub fn new(generator: RistrettoPoint) -> Self {
-        Self {
-            generator,
-        }
+        Self { generator }
     }
 
     pub fn decode(self, starting_point: RistrettoPoint) -> Option<Balance> {

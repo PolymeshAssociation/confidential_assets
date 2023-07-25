@@ -1,21 +1,14 @@
 use merlin::Transcript;
 
-use curve25519_dalek::{
-    ristretto::RistrettoPoint,
-};
+use curve25519_dalek::ristretto::RistrettoPoint;
 
 use confidential_assets::{
-    PubAccount,
-    InitializedTransferTx,
     proofs::{
         bulletproofs::PedersenGens,
-        encryption_proofs::{
-            ENCRYPTION_PROOFS_LABEL,
-            ENCRYPTION_PROOFS_CHALLENGE_LABEL,
-        },
+        encryption_proofs::{ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL},
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    Balance,
+    Balance, InitializedTransferTx, PubAccount,
 };
 
 fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint, RistrettoPoint) {
@@ -28,8 +21,11 @@ fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint,
     // Calculate 'challenge' value.
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
     init_msg.update_transcript(&mut transcript).unwrap();
-    let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
-        .unwrap().x().clone();
+    let challenge = transcript
+        .scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+        .unwrap()
+        .x()
+        .clone();
 
     let fin_msg_b_blinding = fin_msg.0 * gens.B_blinding;
     let challenge_cipher = challenge * cipher.y;
@@ -38,12 +34,14 @@ fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint,
     (gens.B, target * challenge.invert())
 }
 
-pub fn brute_force_amount_correctness(init_tx: &InitializedTransferTx, _sender: &PubAccount) -> Option<Balance> {
+pub fn brute_force_amount_correctness(
+    init_tx: &InitializedTransferTx,
+    _sender: &PubAccount,
+) -> Option<Balance> {
     // Setup "proof" verification.
     let (gen_b, target) = setup_correctness_search(init_tx);
 
-    let discrete_log =
-        confidential_assets::elgamal::discrete_log::DiscreteLog::new(gen_b);
+    let discrete_log = confidential_assets::elgamal::discrete_log::DiscreteLog::new(gen_b);
 
     discrete_log.decode(target)
 }

@@ -4,12 +4,12 @@
 //! addition and subtraction API over the cipher texts.
 
 use crate::{
-    errors::{ErrorKind, Fallible},
-    Balance,
     codec_wrapper::{
         RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder,
         RISTRETTO_POINT_SIZE,
     },
+    errors::{ErrorKind, Fallible},
+    Balance,
 };
 
 use bulletproofs::PedersenGens;
@@ -30,10 +30,11 @@ use codec::{Decode, Encode, EncodeLike, Error as CodecError, Input, Output};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
+pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
-pub mod const_time_elgamal_encryption;
-pub use const_time_elgamal_encryption::CipherTextWithHint;/// Prover's representation of the commitment secret.
+pub use const_time_elgamal_encryption::CipherTextWithHint;
+/// Prover's representation of the commitment secret.
 
 #[derive(Clone, PartialEq, Zeroize, Debug)]
 #[zeroize(drop)]
@@ -447,7 +448,7 @@ impl ElgamalSecretKey {
     }
 
     /// Verifies that a cipher text encrypts the given `value`.
-    /// This follows the same logic as decrypt(), except that the `value` 
+    /// This follows the same logic as decrypt(), except that the `value`
     /// is provided and we don't need to search for it.
     pub fn verify(&self, cipher_text: &CipherText, value: &Scalar) -> Fallible<()> {
         let gens = PedersenGens::default();

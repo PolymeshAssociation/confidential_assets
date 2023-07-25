@@ -1,12 +1,8 @@
 //! The MERCAT's asset issuance implementation.
 
 use crate::{
-    Account, AssetMemo, AssetTransactionAuditor, AssetTransactionIssuer, AssetTransactionVerifier,
-    AuditorId, AuditorPayload, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
-    InitializedAssetTx, PubAccount,
-    errors::{ErrorKind, Fallible},
     elgamal::CommitmentWitness,
-    Balance,
+    errors::{ErrorKind, Fallible},
     proofs::{
         bulletproofs::PedersenGens,
         correctness_proof::{CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
@@ -17,6 +13,9 @@ use crate::{
         encryption_proofs::single_property_verifier,
         wellformedness_proof::{WellformednessProverAwaitingChallenge, WellformednessVerifier},
     },
+    Account, AssetMemo, AssetTransactionAuditor, AssetTransactionIssuer, AssetTransactionVerifier,
+    AuditorId, AuditorPayload, Balance, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
+    InitializedAssetTx, PubAccount,
 };
 
 use rand_core::{CryptoRng, RngCore};
@@ -319,9 +318,8 @@ mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
     use crate::{
-        account::AccountCreator, AccountCreatorInitializer, EncryptionKeys, SecAccount,
-        errors::ErrorKind, elgamal::ElgamalSecretKey,
-        Scalar,
+        account::AccountCreator, elgamal::ElgamalSecretKey, errors::ErrorKind,
+        AccountCreatorInitializer, EncryptionKeys, Scalar, SecAccount,
     };
     use rand::rngs::StdRng;
     use rand::SeedableRng;

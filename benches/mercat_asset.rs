@@ -1,10 +1,10 @@
 mod utility;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use confidential_assets::{
     asset::{AssetIssuer, AssetValidator},
-    Account, AssetTransactionIssuer, AssetTransactionVerifier, InitializedAssetTx, PubAccount,
-    Balance,
+    Account, AssetTransactionIssuer, AssetTransactionVerifier, Balance, InitializedAssetTx,
+    PubAccount,
 };
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::thread_rng;
 
 // The issued amount. Will be in:

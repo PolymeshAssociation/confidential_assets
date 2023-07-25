@@ -3,6 +3,8 @@
 //! For more details see section 5.1 of the whitepaper.
 
 use crate::{
+    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{ErrorKind, Fallible},
     proofs::{
         encryption_proofs::{
@@ -11,10 +13,6 @@ use crate::{
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    elgamal::{
-        CipherText, CommitmentWitness, ElgamalPublicKey,
-    },
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
 };
 
 use bulletproofs::PedersenGens;
@@ -209,13 +207,11 @@ impl<'a> AssetProofVerifier for WellformednessVerifier<'a> {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-        proofs::encryption_proofs::{
-            single_property_prover, single_property_verifier,
-        },
-        elgamal::ElgamalSecretKey,
-    };
     use crate::proofs::*;
+    use crate::{
+        elgamal::ElgamalSecretKey,
+        proofs::encryption_proofs::{single_property_prover, single_property_verifier},
+    };
     use rand::{rngs::StdRng, SeedableRng};
     use sp_std::prelude::*;
     use wasm_bindgen_test::*;

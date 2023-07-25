@@ -5,11 +5,10 @@
 //! about the secrets while protecting against Chosen Message attacks.
 
 use crate::{
-    errors::{ErrorKind, Fallible},
     elgamal::CommitmentWitness,
+    errors::{ErrorKind, Fallible},
     proofs::encryption_proofs::ZKPChallenge,
 };
-
 
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};

@@ -1,15 +1,14 @@
 use crate::{
-    AccountCreatorInitializer, AccountCreatorVerifier, EncryptedAmount, PubAccount, PubAccountTx,
-    SecAccount,
+    elgamal::CommitmentWitness,
+    errors::Fallible,
     proofs::{
         bulletproofs::PedersenGens,
         correctness_proof::{CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
         encryption_proofs::single_property_prover,
         encryption_proofs::single_property_verifier,
     },
-    elgamal::CommitmentWitness,
-    errors::Fallible,
-    Balance, Scalar,
+    AccountCreatorInitializer, AccountCreatorVerifier, Balance, EncryptedAmount, PubAccount,
+    PubAccountTx, Scalar, SecAccount,
 };
 use rand_core::{CryptoRng, RngCore};
 
@@ -97,11 +96,7 @@ impl AccountCreatorVerifier for AccountValidator {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-        EncryptionKeys,
-        elgamal::ElgamalSecretKey,
-        Scalar,
-    };
+    use crate::{elgamal::ElgamalSecretKey, EncryptionKeys, Scalar};
     use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 

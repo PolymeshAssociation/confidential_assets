@@ -37,12 +37,10 @@ use sha3::{digest::FixedOutput, Digest, Sha3_256};
 use sp_std::prelude::*;
 
 use crate::{
-    elgamal::{
-        CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey,
-    },
-    Balance,
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder},
+    elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey},
     errors::Fallible,
+    Balance,
 };
 
 /// This data structure wraps a twisted Elgamal cipher text with the

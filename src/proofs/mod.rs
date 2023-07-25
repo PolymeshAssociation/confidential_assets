@@ -207,4 +207,3 @@ pub mod range_proof;
 pub mod transcript;
 pub mod wellformedness_proof;
 pub use bulletproofs;
-

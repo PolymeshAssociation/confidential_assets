@@ -4,11 +4,11 @@
 //! is within a range.
 
 use crate::{
-    errors::{ErrorKind, Fallible},
     codec_wrapper::{
         CompressedRistrettoDecoder, CompressedRistrettoEncoder, RangeProofDencoder,
         RangeProofEncoder,
     },
+    errors::{ErrorKind, Fallible},
 };
 
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
@@ -151,9 +151,7 @@ pub fn verify_within_range<Rng: RngCore + CryptoRng>(
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-        elgamal::ElgamalSecretKey,
-    };
+    use crate::elgamal::ElgamalSecretKey;
     use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 

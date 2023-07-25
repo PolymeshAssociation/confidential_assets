@@ -1,9 +1,8 @@
 use confidential_assets::{
-    elgamal::{ElgamalSecretKey},
-    Balance, Scalar,
     account::{deposit, AccountCreator},
-    Account, AccountCreatorInitializer, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
-    MediatorAccount, PubAccount, PubAccountTx, SecAccount,
+    elgamal::ElgamalSecretKey,
+    Account, AccountCreatorInitializer, Balance, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
+    MediatorAccount, PubAccount, PubAccountTx, Scalar, SecAccount,
 };
 use rand::{CryptoRng, RngCore};
 

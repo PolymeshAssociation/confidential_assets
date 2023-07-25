@@ -1,6 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use confidential_assets::{
+    elgamal::{encrypt_using_two_pub_keys, CommitmentWitness},
+    errors::Fallible,
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
@@ -13,24 +15,21 @@ use confidential_assets::{
         encryption_proofs::single_property_prover,
         range_proof::{prove_within_range, InRangeProof},
     },
-    errors::Fallible,
-    elgamal::{CommitmentWitness, encrypt_using_two_pub_keys},
-    Scalar, Balance, BALANCE_RANGE,
     transaction::{
-        verify_amount_correctness,
-        verify_initialized_transaction, CtxMediator, CtxReceiver, CtxSender, TransactionValidator,
+        verify_amount_correctness, verify_initialized_transaction, CtxMediator, CtxReceiver,
+        CtxSender, TransactionValidator,
     },
-    Account, AmountSource, EncryptedAmount, EncryptedAmountWithHint, EncryptionPubKey,
+    Account, AmountSource, Balance, EncryptedAmount, EncryptedAmountWithHint, EncryptionPubKey,
     EncryptionSecKey, InitializedTransferTx, JustifiedTransferTx, MediatorAccount, PubAccount,
-    TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
-    TransferTransactionVerifier,
+    Scalar, TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
+    TransferTransactionVerifier, BALANCE_RANGE,
 };
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
 use zeroize::Zeroizing;
 
-mod utility;
 mod correctness_proof;
+mod utility;
 use correctness_proof::brute_force_amount_correctness;
 
 // The sender's initial balance. Will be in:
@@ -488,9 +487,7 @@ fn bench_transaction_amount_correctness(
             BenchmarkId::new("AmountCorrectness", label),
             init_tx,
             |b, init_tx| {
-                b.iter(|| {
-                    verify_amount_correctness(init_tx, *amount, &sender_pub_account).unwrap()
-                })
+                b.iter(|| verify_amount_correctness(init_tx, *amount, &sender_pub_account).unwrap())
             },
         );
     }
