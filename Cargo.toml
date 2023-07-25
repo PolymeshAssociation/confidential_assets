@@ -1,6 +1,9 @@
 [package]
 name = "confidential_assets"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+description = "Polymesh confidential assets."
+authors = [ "Polymesh Association" ]
+license-file = "LICENSE.txt"
 
 [dependencies]
