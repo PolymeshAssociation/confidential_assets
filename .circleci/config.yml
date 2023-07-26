@@ -115,8 +115,8 @@ workflows:
     jobs:
       - lint
       - test
-      - bench
-      - build:
+      - build
+      - bench:
           requires:
             - lint
             - test
