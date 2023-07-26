@@ -129,16 +129,14 @@ pub fn verify_within_range<Rng: RngCore + CryptoRng>(
     // the Fiat-Shamir huristic.
     let mut verifier_transcript = Transcript::new(RANGE_PROOF_LABEL);
 
-    Ok(proof
-        .response
-        .verify_single_with_rng(
-            &bp_gens,
-            &pc_gens,
-            &mut verifier_transcript,
-            &proof.init,
-            proof.range as usize,
-            rng,
-        )?)
+    Ok(proof.response.verify_single_with_rng(
+        &bp_gens,
+        &pc_gens,
+        &mut verifier_transcript,
+        &proof.init,
+        proof.range as usize,
+        rng,
+    )?)
 }
 
 // ------------------------------------------------------------------------

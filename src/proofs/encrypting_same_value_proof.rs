@@ -225,10 +225,7 @@ impl<'a> AssetProofVerifier for EncryptingSameValueVerifier<'a> {
         final_response: &Self::ZKFinalResponse,
     ) -> Result<()> {
         // 2 ciphertexts that encrypt the same witness must have the same Y value.
-        ensure!(
-            self.cipher1.y == self.cipher2.y,
-            Error::VerificationError
-        );
+        ensure!(self.cipher1.y == self.cipher2.y, Error::VerificationError);
 
         ensure!(
             final_response.z1 * self.pub_key1.pub_key

@@ -605,10 +605,7 @@ mod tests {
         let result =
             ctx_receiver.finalize_transaction(&ctx_init_data, receiver_account, expected_amount);
 
-        assert_err!(
-            result,
-            Error::TransactionAmountMismatch { expected_amount }
-        );
+        assert_err!(result, Error::TransactionAmountMismatch { expected_amount });
     }
 
     // ------------------------------ Test simple scenarios
