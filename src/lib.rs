@@ -30,7 +30,7 @@ pub mod proofs;
 pub use elgamal::{
     CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
 };
-pub use errors::{ErrorKind, Fallible};
+pub use errors::{Error, Result};
 pub use proofs::{
     ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,
     encrypting_same_value_proof::CipherEqualDifferentPubKeyProof, range_proof::InRangeProof,
@@ -184,13 +184,13 @@ pub trait AccountCreatorInitializer {
         &self,
         secret: &SecAccount,
         rng: &mut T,
-    ) -> Fallible<PubAccountTx>;
+    ) -> Result<PubAccountTx>;
 }
 
 /// The interface for the verifying the account creation.
 pub trait AccountCreatorVerifier {
     /// Called by the validators to ensure that the account was created correctly.
-    fn verify(&self, account: &PubAccountTx) -> Fallible<()>;
+    fn verify(&self, account: &PubAccountTx) -> Result<()>;
 }
 
 // -------------------------------------------------------------------------------------
@@ -325,7 +325,7 @@ pub trait AssetTransactionIssuer {
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Fallible<InitializedAssetTx>;
+    ) -> Result<InitializedAssetTx>;
 }
 
 pub trait AssetTransactionVerifier {
@@ -336,7 +336,7 @@ pub trait AssetTransactionVerifier {
         justified_asset_tx: &InitializedAssetTx,
         issr_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 }
 
 pub trait AssetTransactionAuditor {
@@ -347,7 +347,7 @@ pub trait AssetTransactionAuditor {
         justified_asset_tx: &InitializedAssetTx,
         issuer_account: &PubAccount,
         auditor_enc_keys: &(AuditorId, EncryptionKeys),
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 }
 
 // -------------------------------------------------------------------------------------
@@ -369,13 +369,13 @@ impl From<Balance> for AmountSource<'_> {
 }
 
 impl AmountSource<'_> {
-    pub fn get_amount(&self, enc_amount: Option<&EncryptedAmountWithHint>) -> Fallible<Balance> {
+    pub fn get_amount(&self, enc_amount: Option<&EncryptedAmountWithHint>) -> Result<Balance> {
         match (self, enc_amount) {
             (Self::Amount(amount), _) => Ok(*amount),
             (Self::Encrypted(keys), Some(enc_amount)) => {
                 Ok(keys.secret.const_time_decrypt(enc_amount)?)
             }
-            _ => Err(ErrorKind::CipherTextDecryptionError.into()),
+            _ => Err(Error::CipherTextDecryptionError.into()),
         }
     }
 }
@@ -435,7 +435,7 @@ pub trait TransferTransactionSender {
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Fallible<InitializedTransferTx>;
+    ) -> Result<InitializedTransferTx>;
 }
 
 pub trait TransferTransactionReceiver {
@@ -447,7 +447,7 @@ pub trait TransferTransactionReceiver {
         initialized_transaction: &InitializedTransferTx,
         receiver_account: Account,
         amount: Balance,
-    ) -> Fallible<FinalizedTransferTx>;
+    ) -> Result<FinalizedTransferTx>;
 }
 
 pub trait TransferTransactionMediator {
@@ -461,7 +461,7 @@ pub trait TransferTransactionMediator {
         receiver_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         rng: &mut R,
-    ) -> Fallible<JustifiedTransferTx>;
+    ) -> Result<JustifiedTransferTx>;
 }
 
 pub trait TransferTransactionVerifier {
@@ -475,7 +475,7 @@ pub trait TransferTransactionVerifier {
         receiver_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         rng: &mut R,
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 }
 
 pub trait TransferTransactionAuditor {
@@ -487,7 +487,7 @@ pub trait TransferTransactionAuditor {
         sender_account: &PubAccount,
         receiver_account: &PubAccount,
         auditor_enc_keys: &(AuditorId, EncryptionKeys),
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 }
 
 pub mod account;

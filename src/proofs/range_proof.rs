@@ -3,14 +3,6 @@
 //! plain text. For example proving that the value that was encrypted
 //! is within a range.
 
-use crate::{
-    codec_wrapper::{
-        CompressedRistrettoDecoder, CompressedRistrettoEncoder, RangeProofDencoder,
-        RangeProofEncoder,
-    },
-    errors::{ErrorKind, Fallible},
-};
-
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
 use codec::{Decode, Encode, Error as CodecError, Input, Output};
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
@@ -18,6 +10,14 @@ use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    codec_wrapper::{
+        CompressedRistrettoDecoder, CompressedRistrettoEncoder, RangeProofDencoder,
+        RangeProofEncoder,
+    },
+    errors::Result,
+};
 
 const RANGE_PROOF_LABEL: &[u8] = b"PolymeshRangeProof";
 
@@ -82,7 +82,7 @@ pub fn prove_within_range<Rng: RngCore + CryptoRng>(
     rand_blind: Scalar,
     range: u32,
     rng: &mut Rng,
-) -> Fallible<InRangeProof> {
+) -> Result<InRangeProof> {
     // Generators for Pedersen commitments.
     let pc_gens = PedersenGens::default();
 
@@ -104,8 +104,7 @@ pub fn prove_within_range<Rng: RngCore + CryptoRng>(
         &rand_blind,
         range as usize,
         rng,
-    )
-    .map_err(|source| ErrorKind::ProvingError { source })?;
+    )?;
 
     Ok(InRangeProof {
         init: commitment,
@@ -118,7 +117,7 @@ pub fn prove_within_range<Rng: RngCore + CryptoRng>(
 pub fn verify_within_range<Rng: RngCore + CryptoRng>(
     proof: &InRangeProof,
     rng: &mut Rng,
-) -> Fallible<()> {
+) -> Result<()> {
     // Generators for Pedersen commitments.
     let pc_gens = PedersenGens::default();
 
@@ -130,7 +129,7 @@ pub fn verify_within_range<Rng: RngCore + CryptoRng>(
     // the Fiat-Shamir huristic.
     let mut verifier_transcript = Transcript::new(RANGE_PROOF_LABEL);
 
-    proof
+    Ok(proof
         .response
         .verify_single_with_rng(
             &bp_gens,
@@ -139,8 +138,7 @@ pub fn verify_within_range<Rng: RngCore + CryptoRng>(
             &proof.init,
             proof.range as usize,
             rng,
-        )
-        .map_err(|_| ErrorKind::VerificationError.into())
+        )?)
 }
 
 // ------------------------------------------------------------------------

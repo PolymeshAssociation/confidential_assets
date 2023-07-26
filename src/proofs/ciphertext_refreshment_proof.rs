@@ -8,7 +8,7 @@
 use crate::{
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
     elgamal::{CipherText, ElgamalPublicKey, ElgamalSecretKey},
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         encryption_proofs::{
             AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
@@ -104,7 +104,7 @@ impl Decode for CipherTextRefreshmentInitialMessage {
 }
 
 impl UpdateTranscript for CipherTextRefreshmentInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Fallible<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
         transcript.append_domain_separator(CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
@@ -232,15 +232,15 @@ impl<'a> AssetProofVerifier for CipherTextRefreshmentVerifier<'a> {
         challenge: &ZKPChallenge,
         initial_message: &Self::ZKInitialMessage,
         z: &Self::ZKFinalResponse,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         ensure!(
             z.0 * self.y == initial_message.a + challenge.x() * self.x,
-            ErrorKind::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
+            Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
         ensure!(
             z.0 * self.pc_gens.B_blinding
                 == initial_message.b + challenge.x() * self.pub_key.pub_key,
-            ErrorKind::CiphertextRefreshmentFinalResponseVerificationError { check: 2 }
+            Error::CiphertextRefreshmentFinalResponseVerificationError { check: 2 }
         );
         Ok(())
     }
@@ -299,13 +299,13 @@ mod tests {
         let result = verifier.verify(&challenge, &bad_initial_message, &final_response);
         assert_err!(
             result,
-            ErrorKind::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
+            Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = CipherTextRefreshmentFinalResponse(Scalar::default());
         assert_err!(
             verifier.verify(&challenge, &initial_message, &bad_final_response),
-            ErrorKind::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
+            Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
     }
 

@@ -1,6 +1,6 @@
 use crate::{
     elgamal::CommitmentWitness,
-    errors::Fallible,
+    errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
         correctness_proof::{CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
@@ -23,7 +23,7 @@ impl AccountCreatorInitializer for AccountCreator {
         &self,
         secret: &SecAccount,
         rng: &mut T,
-    ) -> Fallible<PubAccountTx> {
+    ) -> Result<PubAccountTx> {
         let balance_blinding = Scalar::random(rng);
         let gens = &PedersenGens::default();
 
@@ -69,7 +69,7 @@ pub fn withdraw(
 pub struct AccountValidator;
 
 impl AccountCreatorVerifier for AccountValidator {
-    fn verify(&self, account: &PubAccountTx) -> Fallible<()> {
+    fn verify(&self, account: &PubAccountTx) -> Result<()> {
         let gens = &PedersenGens::default();
 
         // Verify that the encrypted balance is correct

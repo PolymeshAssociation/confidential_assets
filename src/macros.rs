@@ -89,6 +89,6 @@ macro_rules! ensure {
 #[allow(unused_macros)]
 macro_rules! assert_err {
     ($predicate:expr, $err:expr) => {
-        assert_eq!($predicate.expect_err("Error expected").kind(), &$err);
+        assert_eq!($predicate.expect_err("Error expected"), $err);
     };
 }

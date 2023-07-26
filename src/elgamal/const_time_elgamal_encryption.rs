@@ -39,7 +39,7 @@ use sp_std::prelude::*;
 use crate::{
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey},
-    errors::Fallible,
+    errors::Result,
     Balance,
 };
 
@@ -146,7 +146,7 @@ impl ElgamalPublicKey {
 
 impl ElgamalSecretKey {
     /// Decrypt a cipher text that is known to encrypt a `Balance`.
-    pub fn const_time_decrypt(&self, cipher_text: &CipherTextWithHint) -> Fallible<Balance> {
+    pub fn const_time_decrypt(&self, cipher_text: &CipherTextWithHint) -> Result<Balance> {
         // random_2 * h = Y - X / secret_key
         let random_2_h = cipher_text.y - self.secret.invert() * cipher_text.elgamal_cipher.x;
 
@@ -172,7 +172,7 @@ impl ElgamalSecretKey {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::errors::ErrorKind;
+    use crate::errors::Error;
     use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 
@@ -199,7 +199,7 @@ mod tests {
         corrupt_cipher.z[0] += 1;
         assert_err!(
             elg_secret.const_time_decrypt(&corrupt_cipher),
-            ErrorKind::CipherTextDecryptionError
+            Error::CipherTextDecryptionError
         );
     }
 }

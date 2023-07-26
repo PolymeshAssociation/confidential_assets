@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use confidential_assets::{
     elgamal::{encrypt_using_two_pub_keys, CommitmentWitness},
-    errors::Fallible,
+    errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
@@ -106,14 +106,14 @@ impl SenderProofGen {
         }
     }
 
-    fn run_to_stage<T: RngCore + CryptoRng>(&mut self, to_stage: u32, rng: &mut T) -> Fallible<()> {
+    fn run_to_stage<T: RngCore + CryptoRng>(&mut self, to_stage: u32, rng: &mut T) -> Result<()> {
         while self.last_stage < to_stage {
             self.run_next_stage(rng)?;
         }
         Ok(())
     }
 
-    fn run_next_stage<T: RngCore + CryptoRng>(&mut self, rng: &mut T) -> Fallible<()> {
+    fn run_next_stage<T: RngCore + CryptoRng>(&mut self, rng: &mut T) -> Result<()> {
         match self.last_stage {
             0 => {
                 // Ensure the sender has enough funds.

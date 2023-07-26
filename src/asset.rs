@@ -2,7 +2,7 @@
 
 use crate::{
     elgamal::CommitmentWitness,
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         bulletproofs::PedersenGens,
         correctness_proof::{CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
@@ -26,7 +26,7 @@ use zeroize::Zeroizing;
 fn asset_issuance_init_verify_proofs(
     asset_tx: &InitializedAssetTx,
     issr_pub_account: &PubAccount,
-) -> Fallible<()> {
+) -> Result<()> {
     let gens = PedersenGens::default();
 
     // Verify the proof of memo's wellformedness.
@@ -46,7 +46,7 @@ fn asset_issuance_init_verify(
     asset_tx: &InitializedAssetTx,
     issr_pub_account: &PubAccount,
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-) -> Fallible<()> {
+) -> Result<()> {
     asset_issuance_init_verify_proofs(asset_tx, issr_pub_account)?;
 
     // Verify auditors payload.
@@ -63,18 +63,18 @@ fn verify_auditor_payload(
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
     issuer_enc_pub_key: EncryptionPubKey,
     issuer_enc_amount: EncryptedAmount,
-) -> Fallible<()> {
+) -> Result<()> {
     ensure!(
         auditors_payload.len() == auditors_enc_pub_keys.len(),
-        ErrorKind::AuditorPayloadError
+        Error::AuditorPayloadError
     );
 
     let gens = &PedersenGens::default();
-    let _: Fallible<()> = auditors_enc_pub_keys
+    let _: Result<()> = auditors_enc_pub_keys
         .iter()
         .map(|(auditor_id, auditor_pub_key)| {
             let mut found_auditor = false;
-            let _: Fallible<()> = auditors_payload
+            let _: Result<()> = auditors_payload
                 .iter()
                 .map(|payload| {
                     if *auditor_id == payload.auditor_id {
@@ -94,7 +94,7 @@ fn verify_auditor_payload(
                     Ok(())
                 })
                 .collect();
-            ensure!(found_auditor, ErrorKind::AuditorPayloadError);
+            ensure!(found_auditor, Error::AuditorPayloadError);
             Ok(())
         })
         .collect();
@@ -117,7 +117,7 @@ impl AssetTransactionIssuer for AssetIssuer {
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Fallible<InitializedAssetTx> {
+    ) -> Result<InitializedAssetTx> {
         let gens = PedersenGens::default();
 
         // Encrypt the balance to issuer's public key (memo).
@@ -174,12 +174,12 @@ fn add_asset_transaction_auditor<T: RngCore + CryptoRng>(
     issuer_enc_pub_key: &EncryptionPubKey,
     amount_witness: &CommitmentWitness,
     rng: &mut T,
-) -> Fallible<Vec<AuditorPayload>> {
+) -> Result<Vec<AuditorPayload>> {
     let gens = PedersenGens::default();
 
     let mut payload_vec: Vec<AuditorPayload> = Vec::with_capacity(auditors_enc_pub_keys.len());
     // Add the required payload for the auditors.
-    let _: Fallible<()> = auditors_enc_pub_keys
+    let _: Result<()> = auditors_enc_pub_keys
         .iter()
         .map(|(auditor_id, auditor_enc_pub_key)| {
             let encrypted_amount = auditor_enc_pub_key.const_time_encrypt(amount_witness, rng);
@@ -221,7 +221,7 @@ fn verify_initialization(
     asset_tx: &InitializedAssetTx,
     issr_pub_account: &PubAccount,
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-) -> Fallible<()> {
+) -> Result<()> {
     Ok(asset_issuance_init_verify(
         asset_tx,
         issr_pub_account,
@@ -237,7 +237,7 @@ impl AssetTransactionVerifier for AssetValidator {
         initialized_asset_tx: &InitializedAssetTx,
         issr_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let gens = PedersenGens::default();
 
         // Verify issuer's initialization proofs.
@@ -272,14 +272,14 @@ impl AssetTransactionAuditor for AssetAuditor {
         initialized_asset_tx: &InitializedAssetTx,
         issuer_account: &PubAccount,
         auditor_enc_key: &(AuditorId, EncryptionKeys),
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let gens = PedersenGens::default();
 
         // Verify issuer's initialization proofs.
         asset_issuance_init_verify_proofs(&initialized_asset_tx, issuer_account)?;
 
         // If all checks pass, decrypt the encrypted amount and verify issuer's correctness proof.
-        let _: Fallible<()> = initialized_asset_tx
+        let _: Result<()> = initialized_asset_tx
             .auditors_payload
             .iter()
             .map(|payload| {
@@ -305,7 +305,7 @@ impl AssetTransactionAuditor for AssetAuditor {
             })
             .collect();
 
-        Err(ErrorKind::AuditorPayloadError.into())
+        Err(Error::AuditorPayloadError.into())
     }
 }
 
@@ -318,7 +318,7 @@ mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
     use crate::{
-        account::AccountCreator, elgamal::ElgamalSecretKey, errors::ErrorKind,
+        account::AccountCreator, elgamal::ElgamalSecretKey, errors::Error,
         AccountCreatorInitializer, EncryptionKeys, Scalar, SecAccount,
     };
     use rand::rngs::StdRng;
@@ -432,7 +432,7 @@ mod tests {
             validator_auditor_list,
         );
         if validator_check_fails {
-            assert_err!(result, ErrorKind::AuditorPayloadError);
+            assert_err!(result, Error::AuditorPayloadError);
             return;
         }
         result.unwrap();

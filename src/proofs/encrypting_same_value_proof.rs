@@ -5,7 +5,7 @@
 use crate::{
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         encryption_proofs::{
             AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
@@ -112,7 +112,7 @@ impl Default for EncryptingSameValueInitialMessage {
 }
 
 impl UpdateTranscript for EncryptingSameValueInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Fallible<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
         transcript.append_domain_separator(ENCRYPTING_SAME_VALUE_PROOF_CHALLENGE_LABEL);
         transcript.append_validated_point(b"A1", &self.a1.compress())?;
         transcript.append_validated_point(b"A2", &self.a2.compress())?;
@@ -223,27 +223,27 @@ impl<'a> AssetProofVerifier for EncryptingSameValueVerifier<'a> {
         challenge: &ZKPChallenge,
         initial_message: &Self::ZKInitialMessage,
         final_response: &Self::ZKFinalResponse,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         // 2 ciphertexts that encrypt the same witness must have the same Y value.
         ensure!(
             self.cipher1.y == self.cipher2.y,
-            ErrorKind::VerificationError
+            Error::VerificationError
         );
 
         ensure!(
             final_response.z1 * self.pub_key1.pub_key
                 == initial_message.a1 + challenge.x() * self.cipher1.x,
-            ErrorKind::EncryptingSameValueFinalResponseVerificationError { check: 1 }
+            Error::EncryptingSameValueFinalResponseVerificationError { check: 1 }
         );
         ensure!(
             final_response.z1 * self.pub_key2.pub_key
                 == initial_message.a2 + challenge.x() * self.cipher2.x,
-            ErrorKind::EncryptingSameValueFinalResponseVerificationError { check: 2 }
+            Error::EncryptingSameValueFinalResponseVerificationError { check: 2 }
         );
         ensure!(
             final_response.z1 * self.pc_gens.B_blinding + final_response.z2 * self.pc_gens.B
                 == initial_message.b + challenge.x() * self.cipher1.y,
-            ErrorKind::EncryptingSameValueFinalResponseVerificationError { check: 3 }
+            Error::EncryptingSameValueFinalResponseVerificationError { check: 3 }
         );
         Ok(())
     }
@@ -308,14 +308,14 @@ mod tests {
         let result = verifier.verify(&challenge, &bad_initial_message, &final_response);
         assert_err!(
             result,
-            ErrorKind::EncryptingSameValueFinalResponseVerificationError { check: 1 }
+            Error::EncryptingSameValueFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = EncryptingSameValueFinalResponse::default();
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);
         assert_err!(
             result,
-            ErrorKind::EncryptingSameValueFinalResponseVerificationError { check: 1 }
+            Error::EncryptingSameValueFinalResponseVerificationError { check: 1 }
         );
 
         // Non-Interactive ZKP test

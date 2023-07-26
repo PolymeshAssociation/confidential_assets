@@ -6,7 +6,7 @@
 
 use crate::{
     elgamal::CommitmentWitness,
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::encryption_proofs::ZKPChallenge,
 };
 
@@ -30,7 +30,7 @@ pub trait TranscriptProtocol {
         &mut self,
         label: &'static [u8],
         message: &CompressedRistretto,
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 
     /// Appends a domain separator string to the transcript's state.
     ///
@@ -45,7 +45,7 @@ pub trait TranscriptProtocol {
     ///
     /// # Output
     /// A scalar challenge.
-    fn scalar_challenge(&mut self, label: &'static [u8]) -> Fallible<ZKPChallenge>;
+    fn scalar_challenge(&mut self, label: &'static [u8]) -> Result<ZKPChallenge>;
 
     /// Create an RNG seeded from the transcript's cloned state and
     /// randomness from an external `rng`.
@@ -68,10 +68,10 @@ impl TranscriptProtocol for Transcript {
         &mut self,
         label: &'static [u8],
         message: &CompressedRistretto,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         use curve25519_dalek::traits::IsIdentity;
 
-        ensure!(!message.is_identity(), ErrorKind::VerificationError);
+        ensure!(!message.is_identity(), Error::VerificationError);
         self.append_message(label, message.as_bytes());
         Ok(())
     }
@@ -80,7 +80,7 @@ impl TranscriptProtocol for Transcript {
         self.append_message(b"dom-sep", message)
     }
 
-    fn scalar_challenge(&mut self, label: &'static [u8]) -> Fallible<ZKPChallenge> {
+    fn scalar_challenge(&mut self, label: &'static [u8]) -> Result<ZKPChallenge> {
         let mut buf = [0u8; 64];
         self.challenge_bytes(label, &mut buf);
 
@@ -102,7 +102,7 @@ impl TranscriptProtocol for Transcript {
 /// A trait that is used to update the transcript with the initial message
 /// that results from the first round of the protocol.
 pub trait UpdateTranscript {
-    fn update_transcript(&self, d: &mut Transcript) -> Fallible<()>;
+    fn update_transcript(&self, d: &mut Transcript) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -115,7 +115,7 @@ mod tests {
         let mut transcript = Transcript::new(b"unit test");
         assert_err!(
             transcript.append_validated_point(b"identity", &CompressedRistretto::default()),
-            ErrorKind::VerificationError
+            Error::VerificationError
         );
     }
 }

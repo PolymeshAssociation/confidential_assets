@@ -8,7 +8,7 @@ use crate::{
         RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder,
         RISTRETTO_POINT_SIZE,
     },
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     Balance,
 };
 
@@ -320,7 +320,7 @@ impl ElgamalSecretKey {
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
-    pub fn decrypt(&self, cipher_text: &CipherText) -> Fallible<Balance> {
+    pub fn decrypt(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
         let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
@@ -333,12 +333,12 @@ impl ElgamalSecretKey {
             result += gens.B;
         }
 
-        Err(ErrorKind::CipherTextDecryptionError.into())
+        Err(Error::CipherTextDecryptionError)
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
     #[cfg(feature = "discrete_log")]
-    pub fn decrypt_discrete_log(&self, cipher_text: &CipherText) -> Fallible<Balance> {
+    pub fn decrypt_discrete_log(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
         let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
@@ -347,7 +347,7 @@ impl ElgamalSecretKey {
             return Ok(v as Balance);
         }
 
-        Err(ErrorKind::CipherTextDecryptionError.into())
+        Err(Error::CipherTextDecryptionError)
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
@@ -396,7 +396,7 @@ impl ElgamalSecretKey {
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
     #[cfg(feature = "rayon")]
-    pub fn decrypt_parallel(&self, cipher_text: &CipherText) -> Fallible<Balance> {
+    pub fn decrypt_parallel(&self, cipher_text: &CipherText) -> Result<Balance> {
         use rayon::prelude::*;
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -444,13 +444,13 @@ impl ElgamalSecretKey {
             return Ok(res);
         }
 
-        Err(ErrorKind::CipherTextDecryptionError.into())
+        Err(Error::CipherTextDecryptionError)
     }
 
     /// Verifies that a cipher text encrypts the given `value`.
     /// This follows the same logic as decrypt(), except that the `value`
     /// is provided and we don't need to search for it.
-    pub fn verify(&self, cipher_text: &CipherText, value: &Scalar) -> Fallible<()> {
+    pub fn verify(&self, cipher_text: &CipherText, value: &Scalar) -> Result<()> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key.
         let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
@@ -459,7 +459,7 @@ impl ElgamalSecretKey {
             return Ok(());
         }
 
-        Err(ErrorKind::CipherTextDecryptionError.into())
+        Err(Error::CipherTextDecryptionError)
     }
 }
 
@@ -483,7 +483,7 @@ pub fn encrypt_using_two_pub_keys(
 // ------------------------------------------------------------------------
 
 impl CipherText {
-    pub fn refresh(&self, secret_key: &ElgamalSecretKey, blinding: Scalar) -> Fallible<CipherText> {
+    pub fn refresh(&self, secret_key: &ElgamalSecretKey, blinding: Scalar) -> Result<CipherText> {
         let value: Scalar = secret_key.decrypt(self)?.into();
         let pub_key = secret_key.get_public_key();
         let new_witness = CommitmentWitness { value, blinding };
@@ -497,7 +497,7 @@ impl CipherText {
         secret_key: &ElgamalSecretKey,
         blinding: Scalar,
         hint: &Scalar,
-    ) -> Fallible<CipherText> {
+    ) -> Result<CipherText> {
         secret_key.verify(self, hint)?;
         let pub_key = secret_key.get_public_key();
         let new_witness = CommitmentWitness {

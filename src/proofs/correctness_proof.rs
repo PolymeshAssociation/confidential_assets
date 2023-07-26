@@ -4,7 +4,7 @@
 use crate::{
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         encryption_proofs::{
             AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
@@ -100,7 +100,7 @@ impl Default for CorrectnessInitialMessage {
 }
 
 impl UpdateTranscript for CorrectnessInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Fallible<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
         transcript.append_domain_separator(CORRECTNESS_PROOF_CHALLENGE_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
@@ -193,17 +193,17 @@ impl<'a> AssetProofVerifier for CorrectnessVerifier<'a> {
         challenge: &ZKPChallenge,
         initial_message: &Self::ZKInitialMessage,
         z: &Self::ZKFinalResponse,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         let generators = self.pc_gens;
         let y_prime = self.cipher.y - (self.value * generators.B);
 
         ensure!(
             z.0 * self.pub_key.pub_key == initial_message.a + challenge.x() * self.cipher.x,
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 1 }
+            Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
         ensure!(
             z.0 * generators.B_blinding == initial_message.b + challenge.x() * y_prime,
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 2 }
+            Error::CorrectnessFinalResponseVerificationError { check: 2 }
         );
         Ok(())
     }
@@ -264,14 +264,14 @@ mod tests {
         let result = verifier.verify(&challenge, &bad_initial_message, &final_response);
         assert_err!(
             result,
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 1 }
+            Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = CorrectnessFinalResponse(Scalar::default());
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);
         assert_err!(
             result,
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 1 }
+            Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
     }
 

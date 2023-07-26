@@ -5,7 +5,7 @@
 use crate::{
     codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         encryption_proofs::{
             AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
@@ -98,7 +98,7 @@ impl Decode for WellformednessInitialMessage {
 }
 
 impl UpdateTranscript for WellformednessInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Fallible<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
         transcript.append_domain_separator(WELLFORMEDNESS_PROOF_CHALLENGE_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
@@ -189,15 +189,15 @@ impl<'a> AssetProofVerifier for WellformednessVerifier<'a> {
         challenge: &ZKPChallenge,
         initial_message: &Self::ZKInitialMessage,
         response: &Self::ZKFinalResponse,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         ensure!(
             response.z1 * self.pub_key.pub_key == initial_message.a + challenge.x() * self.cipher.x,
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 1 }
+            Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
         ensure!(
             response.z1 * self.pc_gens.B_blinding + response.z2 * self.pc_gens.B
                 == initial_message.b + challenge.x() * self.cipher.y,
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 2 }
+            Error::WellformednessFinalResponseVerificationError { check: 2 }
         );
         Ok(())
     }
@@ -269,7 +269,7 @@ mod tests {
         let result = verifier.verify(&challenge, &bad_initial_message, &final_response);
         assert_err!(
             result,
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 1 }
+            Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = WellformednessFinalResponse {
@@ -279,7 +279,7 @@ mod tests {
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);
         assert_err!(
             result,
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 1 }
+            Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
 
         // ------------------------------- Non-interactive case
@@ -312,13 +312,13 @@ mod tests {
         assert_err!(
             // 4th round
             single_property_verifier(&verifier, (bad_initial_message, final_response)),
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 1 }
+            Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
 
         assert_err!(
             // 4th round
             single_property_verifier(&verifier, (initial_message, bad_final_response)),
-            ErrorKind::WellformednessFinalResponseVerificationError { check: 1 }
+            Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
     }
 

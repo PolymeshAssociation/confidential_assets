@@ -6,7 +6,7 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 use sp_std::convert::TryFrom;
 
-use crate::errors::{Error, ErrorKind, Fallible};
+use crate::errors::{Error, Result};
 use crate::proofs::transcript::{TranscriptProtocol, UpdateTranscript};
 
 /// The domain label for the encryption proofs.
@@ -33,7 +33,7 @@ impl TryFrom<Scalar> for ZKPChallenge {
     type Error = Error;
 
     fn try_from(x: Scalar) -> Result<Self, Self::Error> {
-        ensure!(x != Scalar::zero(), ErrorKind::VerificationError);
+        ensure!(x != Scalar::zero(), Error::VerificationError);
         Ok(ZKPChallenge { x })
     }
 }
@@ -116,7 +116,7 @@ pub trait AssetProofVerifier {
         challenge: &ZKPChallenge,
         initial_message: &Self::ZKInitialMessage,
         final_response: &Self::ZKFinalResponse,
-    ) -> Fallible<()>;
+    ) -> Result<()>;
 }
 
 // ------------------------------------------------------------------------
@@ -142,7 +142,7 @@ pub fn single_property_prover<
 >(
     prover_ac: ProverAwaitingChallenge,
     rng: &mut T,
-) -> Fallible<
+) -> Result<
     ZKProofResponse<
         ProverAwaitingChallenge::ZKInitialMessage,
         ProverAwaitingChallenge::ZKFinalResponse,
@@ -174,7 +174,7 @@ pub fn single_property_prover<
 pub fn single_property_verifier<Verifier: AssetProofVerifier>(
     verifier: &Verifier,
     proof: ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
-) -> Fallible<()> {
+) -> Result<()> {
     let initial_message = proof.0;
     let final_response = proof.1;
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
@@ -198,7 +198,7 @@ mod tests {
     use super::*;
     use crate::{
         elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey},
-        errors::ErrorKind,
+        errors::Error,
         proofs::{
             correctness_proof::{
                 CorrectnessFinalResponse, CorrectnessInitialMessage,
@@ -296,13 +296,13 @@ mod tests {
         let bad_initial_message = CorrectnessInitialMessage::default();
         assert_err!(
             single_property_verifier(&verifier0, (bad_initial_message, final_response0)),
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 1 }
+            Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = CorrectnessFinalResponse::from(Scalar::one());
         assert_err!(
             single_property_verifier(&verifier0, (initial_message0, bad_final_response)),
-            ErrorKind::CorrectnessFinalResponseVerificationError { check: 1 }
+            Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
     }
 

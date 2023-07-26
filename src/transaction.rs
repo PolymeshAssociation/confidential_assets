@@ -1,6 +1,6 @@
 use crate::{
     elgamal::{encrypt_using_two_pub_keys, CommitmentWitness},
-    errors::{ErrorKind, Fallible},
+    errors::{Error, Result},
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
@@ -45,14 +45,14 @@ impl TransferTransactionSender for CtxSender {
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Fallible<InitializedTransferTx> {
+    ) -> Result<InitializedTransferTx> {
         let sender_enc_keys = &sender_account.secret.enc_keys;
         let receiver_pub_key = receiver_pub_account.owner_enc_pub_key;
 
         // Ensure the sender has enough funds.
         ensure!(
             sender_balance >= amount,
-            ErrorKind::NotEnoughFund {
+            Error::NotEnoughFund {
                 balance: sender_balance,
                 transaction_amount: amount
             }
@@ -159,12 +159,12 @@ fn add_transaction_auditor<T: RngCore + CryptoRng>(
     sender_enc_pub_key: &EncryptionPubKey,
     amount_witness: &CommitmentWitness,
     rng: &mut T,
-) -> Fallible<Vec<AuditorPayload>> {
+) -> Result<Vec<AuditorPayload>> {
     let gens = PedersenGens::default();
 
     let mut payload_vec: Vec<AuditorPayload> = Vec::with_capacity(auditors_enc_pub_keys.len());
     // Add the required payload for the auditors.
-    let _: Fallible<()> = auditors_enc_pub_keys
+    let _: Result<()> = auditors_enc_pub_keys
         .iter()
         .map(|(auditor_id, auditor_enc_pub_key)| {
             let encrypted_amount = auditor_enc_pub_key.const_time_encrypt(amount_witness, rng);
@@ -210,14 +210,14 @@ impl TransferTransactionReceiver for CtxReceiver {
         init_tx: &InitializedTransferTx,
         receiver_account: Account,
         amount: Balance,
-    ) -> Fallible<FinalizedTransferTx> {
+    ) -> Result<FinalizedTransferTx> {
         // Check that the amount is correct.
         receiver_account
             .secret
             .enc_keys
             .secret
             .verify(&init_tx.memo.enc_amount_using_receiver, &amount.into())
-            .map_err(|_| ErrorKind::TransactionAmountMismatch {
+            .map_err(|_| Error::TransactionAmountMismatch {
                 expected_amount: amount,
             })?;
 
@@ -242,7 +242,7 @@ impl TransferTransactionMediator for CtxMediator {
         receiver_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         rng: &mut R,
-    ) -> Fallible<JustifiedTransferTx> {
+    ) -> Result<JustifiedTransferTx> {
         // Verify sender's part of the transaction.
         // This includes checking the auditors' payload.
         let _ = verify_initialized_transaction(
@@ -279,7 +279,7 @@ impl TransferTransactionVerifier for TransactionValidator {
         receiver_account: &PubAccount,
         auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
         rng: &mut R,
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         verify_initialized_transaction(
             init_tx,
             sender_account,
@@ -300,7 +300,7 @@ pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
     receiver_account: &PubAccount,
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
     rng: &mut R,
-) -> Fallible<TransferTxState> {
+) -> Result<TransferTxState> {
     verify_initial_transaction_proofs(
         transaction,
         sender_account,
@@ -320,7 +320,7 @@ fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
     receiver_account: &PubAccount,
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
     rng: &mut R,
-) -> Fallible<()> {
+) -> Result<()> {
     let memo = &transaction.memo;
     let init_data = &transaction;
     let gens = &PedersenGens::default();
@@ -370,7 +370,7 @@ pub fn verify_amount_correctness(
     init_tx: &InitializedTransferTx,
     amount: Balance,
     sender_account: &PubAccount,
-) -> Fallible<()> {
+) -> Result<()> {
     let gens = &PedersenGens::default();
 
     // Verify that the encrypted amount is correct.
@@ -392,18 +392,18 @@ fn verify_auditor_payload(
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
     sender_enc_pub_key: EncryptionPubKey,
     sender_enc_amount: EncryptedAmount,
-) -> Fallible<()> {
+) -> Result<()> {
     ensure!(
         auditors_payload.len() == auditors_enc_pub_keys.len(),
-        ErrorKind::AuditorPayloadError
+        Error::AuditorPayloadError
     );
 
     let gens = &PedersenGens::default();
-    let _: Fallible<()> = auditors_enc_pub_keys
+    let _: Result<()> = auditors_enc_pub_keys
         .iter()
         .map(|(auditor_id, auditor_pub_key)| {
             let mut found_auditor = false;
-            let _: Fallible<()> = auditors_payload
+            let _: Result<()> = auditors_payload
                 .iter()
                 .map(|payload| {
                     if *auditor_id == payload.auditor_id {
@@ -423,7 +423,7 @@ fn verify_auditor_payload(
                     Ok(())
                 })
                 .collect();
-            ensure!(found_auditor, ErrorKind::AuditorPayloadError);
+            ensure!(found_auditor, Error::AuditorPayloadError);
             Ok(())
         })
         .collect();
@@ -448,9 +448,9 @@ impl TransferTransactionAuditor for CtxAuditor {
         sender_account: &PubAccount,
         _receiver_account: &PubAccount,
         auditor_enc_key: &(AuditorId, EncryptionKeys),
-    ) -> Fallible<()> {
+    ) -> Result<()> {
         // If all checks pass, decrypt the encrypted amount and verify sender's correctness proof.
-        let _: Fallible<()> = init_tx
+        let _: Result<()> = init_tx
             .auditors_payload
             .iter()
             .map(|payload| {
@@ -467,7 +467,7 @@ impl TransferTransactionAuditor for CtxAuditor {
             })
             .collect();
 
-        Err(ErrorKind::AuditorPayloadError.into())
+        Err(Error::AuditorPayloadError.into())
     }
 }
 
@@ -525,7 +525,7 @@ mod tests {
         receiver_enc_pub_key: EncryptionPubKey,
         balance: Balance,
         rng: &mut R,
-    ) -> Fallible<(PubAccount, EncryptedAmount)> {
+    ) -> Result<(PubAccount, EncryptedAmount)> {
         let (_, enc_balance) = receiver_enc_pub_key.encrypt_value(Scalar::from(balance), rng);
 
         Ok((
@@ -607,7 +607,7 @@ mod tests {
 
         assert_err!(
             result,
-            ErrorKind::TransactionAmountMismatch { expected_amount }
+            Error::TransactionAmountMismatch { expected_amount }
         );
     }
 
@@ -796,7 +796,7 @@ mod tests {
         );
 
         if mediator_check_fails {
-            assert_err!(result, ErrorKind::AuditorPayloadError);
+            assert_err!(result, Error::AuditorPayloadError);
             return;
         }
 
@@ -811,7 +811,7 @@ mod tests {
         );
 
         if validator_check_fails {
-            assert_err!(result, ErrorKind::AuditorPayloadError);
+            assert_err!(result, Error::AuditorPayloadError);
             return;
         }
 
