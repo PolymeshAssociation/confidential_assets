@@ -81,13 +81,5 @@ name = "elgamal_decryption"
 harness = false
 
 [[bench]]
-name = "mercat_account"
-harness = false
-
-[[bench]]
-name = "mercat_asset"
-harness = false
-
-[[bench]]
-name = "mercat_transaction"
+name = "confidential_transaction"
 harness = false
