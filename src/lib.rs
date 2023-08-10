@@ -14,7 +14,7 @@ use rand_core::{CryptoRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
-use sp_std::{fmt, vec::Vec};
+use sp_std::vec::Vec;
 
 pub use curve25519_dalek::scalar::Scalar;
 
@@ -26,6 +26,7 @@ pub mod errors;
 pub mod codec_wrapper;
 pub mod elgamal;
 pub mod proofs;
+pub mod transaction;
 
 pub use elgamal::{
     CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
@@ -175,181 +176,6 @@ impl From<&EncryptionKeys> for Account {
     }
 }
 
-/// The interface for the account creation.
-pub trait AccountCreatorInitializer {
-    /// Creates a public account for a user and initializes the balance to zero.
-    /// Corresponds to `CreateAccount` method of the MERCAT paper.
-    /// This function assumes that the given input `account_id` is unique.
-    fn create<T: RngCore + CryptoRng>(
-        &self,
-        secret: &SecAccount,
-        rng: &mut T,
-    ) -> Result<PubAccountTx>;
-}
-
-/// The interface for the verifying the account creation.
-pub trait AccountCreatorVerifier {
-    /// Called by the validators to ensure that the account was created correctly.
-    fn verify(&self, account: &PubAccountTx) -> Result<()>;
-}
-
-// -------------------------------------------------------------------------------------
-// -                               Transaction State                                   -
-// -------------------------------------------------------------------------------------
-
-/// Represents the three substates (started, verified, rejected) of a
-/// confidential transaction state.
-#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum TxSubstate {
-    /// The action on transaction has been taken but is not verified yet.
-    Started,
-    /// The action on transaction has been verified by validators.
-    Validated,
-    /// The action on transaction has failed the verification by validators.
-    Rejected,
-}
-
-impl fmt::Display for TxSubstate {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let str = match self {
-            TxSubstate::Started => "started",
-            TxSubstate::Validated => "validated",
-            TxSubstate::Rejected => "rejected",
-        };
-        write!(f, "{}", str)
-    }
-}
-
-/// Represents the two states (initialized, justified) of a
-/// confidential asset issuance transaction.
-#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum AssetTxState {
-    Initialization(TxSubstate),
-    Justification(TxSubstate),
-}
-
-impl fmt::Display for AssetTxState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AssetTxState::Initialization(substate) => {
-                write!(f, "asset-initialization-{}", substate)
-            }
-            AssetTxState::Justification(substate) => write!(f, "asset-justification-{}", substate),
-        }
-    }
-}
-
-impl core::fmt::Debug for AssetTxState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AssetTxState::Initialization(substate) => {
-                write!(f, "asset-initialization-{}", substate)
-            }
-            AssetTxState::Justification(substate) => write!(f, "asset-justification-{}", substate),
-        }
-    }
-}
-
-/// Represents the four states (initialized, justified, finalized, reversed) of a
-/// confidential transaction.
-#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum TransferTxState {
-    Initialization(TxSubstate),
-    Finalization(TxSubstate),
-    Justification(TxSubstate),
-    Reversal(TxSubstate),
-}
-
-impl fmt::Display for TransferTxState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TransferTxState::Initialization(substate) => {
-                write!(f, "transfer-initialization-{}", substate)
-            }
-            TransferTxState::Finalization(substate) => {
-                write!(f, "transfer-finalization-{}", substate)
-            }
-            TransferTxState::Justification(substate) => {
-                write!(f, "transfer-justification-{}", substate)
-            }
-            TransferTxState::Reversal(substate) => write!(f, "transfer-reversal-{}", substate),
-        }
-    }
-}
-
-impl core::fmt::Debug for TransferTxState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TransferTxState::Initialization(substate) => write!(f, "initialization_{}", substate),
-            TransferTxState::Finalization(substate) => write!(f, "finalization_{}", substate),
-            TransferTxState::Justification(substate) => write!(f, "justification_{}", substate),
-            TransferTxState::Reversal(substate) => write!(f, "reversal_{}", substate),
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------
-// -                                 Asset Issuance                                    -
-// -------------------------------------------------------------------------------------
-
-/// Asset memo holds the contents of an asset issuance transaction.
-#[derive(Clone, Encode, Decode, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct AssetMemo {
-    pub enc_issued_amount: EncryptedAmount,
-}
-
-/// Holds the public portion of an asset issuance transaction after initialization.
-/// This can be placed on the chain.
-#[derive(Clone, Encode, Decode, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InitializedAssetTx {
-    pub account: PubAccount,
-    pub memo: AssetMemo,
-    pub balance_wellformedness_proof: WellformednessProof,
-    pub balance_correctness_proof: CorrectnessProof,
-    pub auditors_payload: Vec<AuditorPayload>,
-}
-
-/// The interface for the confidential asset issuance transaction.
-pub trait AssetTransactionIssuer {
-    /// Initializes a confidential asset issue transaction. Note that the returning
-    /// values of this function contain sensitive information. Corresponds
-    /// to `CreateAssetIssuanceTx` MERCAT whitepaper.
-    fn initialize_asset_transaction<T: RngCore + CryptoRng>(
-        &self,
-        issr_account: &Account,
-        auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-        amount: Balance,
-        rng: &mut T,
-    ) -> Result<InitializedAssetTx>;
-}
-
-pub trait AssetTransactionVerifier {
-    /// Called by validators to verify the justification and processing of the transaction.
-    fn verify_asset_transaction(
-        &self,
-        amount: Balance,
-        justified_asset_tx: &InitializedAssetTx,
-        issr_account: &PubAccount,
-        auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
-    ) -> Result<()>;
-}
-
-pub trait AssetTransactionAuditor {
-    /// Verify the initialized, and justified transactions.
-    /// Audit the sender's encrypted amount.
-    fn audit_asset_transaction(
-        &self,
-        justified_asset_tx: &InitializedAssetTx,
-        issuer_account: &PubAccount,
-        auditor_enc_keys: &(AuditorId, EncryptionKeys),
-    ) -> Result<()>;
-}
-
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
@@ -489,7 +315,3 @@ pub trait TransferTransactionAuditor {
         auditor_enc_keys: &(AuditorId, EncryptionKeys),
     ) -> Result<()>;
 }
-
-pub mod account;
-pub mod asset;
-pub mod transaction;

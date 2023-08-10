@@ -17,8 +17,8 @@ use crate::{
     Account, AmountSource, AuditorId, AuditorPayload, Balance, EncryptedAmount, EncryptionKeys,
     EncryptionPubKey, FinalizedTransferTx, InitializedTransferTx, JustifiedTransferTx, PubAccount,
     Scalar, TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
-    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, TransferTxState,
-    TxSubstate, BALANCE_RANGE,
+    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo,
+    BALANCE_RANGE,
 };
 
 use rand_core::{CryptoRng, RngCore};
@@ -300,7 +300,7 @@ pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
     receiver_account: &PubAccount,
     auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
     rng: &mut R,
-) -> Result<TransferTxState> {
+) -> Result<()> {
     verify_initial_transaction_proofs(
         transaction,
         sender_account,
@@ -310,7 +310,7 @@ pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
         rng,
     )?;
 
-    Ok(TransferTxState::Initialization(TxSubstate::Validated))
+    Ok(())
 }
 
 fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
