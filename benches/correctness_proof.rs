@@ -8,10 +8,10 @@ use confidential_assets::{
         encryption_proofs::{ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL},
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    Balance, ElgamalPublicKey, InitializedTransferTx,
+    Balance, ElgamalPublicKey, ConfidentialTransferProof,
 };
 
-fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint, RistrettoPoint) {
+fn setup_correctness_search(init_tx: &ConfidentialTransferProof) -> (RistrettoPoint, RistrettoPoint) {
     let gens = &PedersenGens::default();
 
     // Setup "proof" verification.
@@ -35,7 +35,7 @@ fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint,
 }
 
 pub fn brute_force_amount_correctness(
-    init_tx: &InitializedTransferTx,
+    init_tx: &ConfidentialTransferProof,
     _sender: &ElgamalPublicKey,
 ) -> Option<Balance> {
     // Setup "proof" verification.

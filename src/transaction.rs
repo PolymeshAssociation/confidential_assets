@@ -15,7 +15,7 @@ use crate::{
         range_proof::{prove_within_range, verify_within_range},
     },
     AmountSource, AuditorId, AuditorPayload, Balance, ElgamalKeys, ElgamalPublicKey,
-    EncryptedAmount, FinalizedTransferTx, InitializedTransferTx, JustifiedTransferTx, Scalar,
+    EncryptedAmount, ConfidentialTransferProof, Scalar,
     TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
     TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, BALANCE_RANGE,
 };
@@ -44,7 +44,7 @@ impl TransferTransactionSender for CtxSender {
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Result<InitializedTransferTx> {
+    ) -> Result<ConfidentialTransferProof> {
         // Ensure the sender has enough funds.
         ensure!(
             sender_balance >= amount,
@@ -129,7 +129,7 @@ impl TransferTransactionSender for CtxSender {
         let auditors_payload =
             add_transaction_auditor(auditors_enc_pub_keys, &sender_account.public, &witness, rng)?;
 
-        Ok(InitializedTransferTx {
+        Ok(ConfidentialTransferProof {
             amount_equal_cipher_proof,
             non_neg_amount_proof,
             enough_fund_proof,
@@ -199,10 +199,10 @@ pub struct CtxReceiver;
 impl TransferTransactionReceiver for CtxReceiver {
     fn finalize_transaction(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         receiver_account: ElgamalKeys,
         amount: Balance,
-    ) -> Result<FinalizedTransferTx> {
+    ) -> Result<()> {
         // Check that the amount is correct.
         receiver_account
             .secret
@@ -211,7 +211,7 @@ impl TransferTransactionReceiver for CtxReceiver {
                 expected_amount: amount,
             })?;
 
-        Ok(FinalizedTransferTx {})
+        Ok(())
     }
 }
 
@@ -225,14 +225,14 @@ pub struct CtxMediator;
 impl TransferTransactionMediator for CtxMediator {
     fn justify_transaction<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         amount_source: AmountSource,
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
         receiver_account: &ElgamalPublicKey,
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
-    ) -> Result<JustifiedTransferTx> {
+    ) -> Result<()> {
         // Verify sender's part of the transaction.
         // This includes checking the auditors' payload.
         let _ = verify_initialized_transaction(
@@ -248,7 +248,7 @@ impl TransferTransactionMediator for CtxMediator {
         let amount = amount_source.get_amount(init_tx.memo.enc_amount_for_mediator.as_ref())?;
         verify_amount_correctness(&init_tx, amount, sender_account)?;
 
-        Ok(JustifiedTransferTx {})
+        Ok(())
     }
 }
 
@@ -263,7 +263,7 @@ pub struct TransactionValidator;
 impl TransferTransactionVerifier for TransactionValidator {
     fn verify_transaction<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
         receiver_account: &ElgamalPublicKey,
@@ -284,7 +284,7 @@ impl TransferTransactionVerifier for TransactionValidator {
 }
 
 pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
-    transaction: &InitializedTransferTx,
+    transaction: &ConfidentialTransferProof,
     sender_account: &ElgamalPublicKey,
     sender_init_balance: &EncryptedAmount,
     receiver_account: &ElgamalPublicKey,
@@ -304,7 +304,7 @@ pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
 }
 
 fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
-    transaction: &InitializedTransferTx,
+    transaction: &ConfidentialTransferProof,
     sender_account: &ElgamalPublicKey,
     sender_init_balance: &EncryptedAmount,
     receiver_account: &ElgamalPublicKey,
@@ -357,7 +357,7 @@ fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
 }
 
 pub fn verify_amount_correctness(
-    init_tx: &InitializedTransferTx,
+    init_tx: &ConfidentialTransferProof,
     amount: Balance,
     sender_account: &ElgamalPublicKey,
 ) -> Result<()> {
@@ -434,7 +434,7 @@ impl TransferTransactionAuditor for CtxAuditor {
     /// Audit the sender's encrypted amount.
     fn audit_transaction(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
         _receiver_account: &ElgamalPublicKey,
         auditor_enc_key: &(AuditorId, ElgamalKeys),
@@ -524,8 +524,8 @@ mod tests {
         receiver_pub_key: ElgamalPublicKey,
         expected_amount: Balance,
         rng: &mut R,
-    ) -> InitializedTransferTx {
-        InitializedTransferTx {
+    ) -> ConfidentialTransferProof {
+        ConfidentialTransferProof {
             memo: mock_ctx_init_memo(receiver_pub_key, expected_amount, rng),
             amount_equal_cipher_proof: CipherEqualDifferentPubKeyProof::default(),
             non_neg_amount_proof: InRangeProof::build(rng),

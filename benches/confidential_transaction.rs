@@ -20,7 +20,7 @@ use confidential_assets::{
         CtxSender, TransactionValidator,
     },
     AmountSource, Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, EncryptedAmount,
-    EncryptedAmountWithHint, InitializedTransferTx, JustifiedTransferTx, Scalar,
+    EncryptedAmountWithHint, ConfidentialTransferProof, Scalar,
     TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
     TransferTransactionVerifier, BALANCE_RANGE,
 };
@@ -270,7 +270,7 @@ fn bench_transaction_sender(
     sender_balances: Vec<(Balance, EncryptedAmount)>,
     rcvr_pub_account: ElgamalPublicKey,
     mediator_pub_key: ElgamalPublicKey,
-) -> Vec<(Balance, EncryptedAmount, InitializedTransferTx)> {
+) -> Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)> {
     let mut rng = thread_rng();
 
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -327,7 +327,7 @@ fn bench_transaction_verify_sender_proof(
     c: &mut Criterion,
     sender_account: ElgamalPublicKey,
     receiver_account: ElgamalPublicKey,
-    transactions: &[(Balance, EncryptedAmount, InitializedTransferTx)],
+    transactions: &[(Balance, EncryptedAmount, ConfidentialTransferProof)],
 ) {
     let mut rng = thread_rng();
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -356,8 +356,8 @@ fn bench_transaction_verify_sender_proof(
 fn bench_transaction_receiver(
     c: &mut Criterion,
     receiver_account: ElgamalKeys,
-    transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
-) -> Vec<(Balance, EncryptedAmount, InitializedTransferTx)> {
+    transactions: Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)>,
+) -> Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)> {
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, _, tx) in &transactions {
         group.bench_with_input(
@@ -392,8 +392,8 @@ fn bench_transaction_mediator(
     mediator_account: ElgamalKeys,
     sender_pub_account: ElgamalPublicKey,
     receiver_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
-) -> Vec<JustifiedTransferTx> {
+    transactions: Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)>,
+) {
     let mut rng = thread_rng();
 
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -421,31 +421,13 @@ fn bench_transaction_mediator(
         );
     }
     group.finish();
-
-    transactions
-        .into_iter()
-        .map(|(_, sender_balance, init_tx)| {
-            let mediator = CtxMediator;
-            mediator
-                .justify_transaction(
-                    &init_tx,
-                    AmountSource::Encrypted(&mediator_account),
-                    &sender_pub_account,
-                    &sender_balance,
-                    &receiver_pub_account,
-                    &[],
-                    &mut rng,
-                )
-                .unwrap()
-        })
-        .collect()
 }
 
 fn bench_transaction_validator(
     c: &mut Criterion,
     sender_pub_account: ElgamalPublicKey,
     receiver_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
+    transactions: Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)>,
 ) {
     let mut rng = thread_rng();
 
@@ -478,7 +460,7 @@ fn bench_transaction_validator(
 fn bench_transaction_amount_correctness(
     c: &mut Criterion,
     sender_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
+    transactions: Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)>,
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, _sender_balance, init_tx) in &transactions {
@@ -497,7 +479,7 @@ fn bench_transaction_amount_correctness(
 fn bench_transaction_brute_force_amount_correctness(
     c: &mut Criterion,
     sender_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
+    transactions: Vec<(Balance, EncryptedAmount, ConfidentialTransferProof)>,
 ) {
     let mut group = c.benchmark_group("MERCAT Attack");
     for (amount, _sender_balance, init_tx) in &transactions {

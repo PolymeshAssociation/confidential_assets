@@ -130,7 +130,7 @@ pub struct TransferTxMemo {
 /// Holds the proofs and memo of the confidential transaction sent by the sender.
 #[derive(Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InitializedTransferTx {
+pub struct ConfidentialTransferProof {
     pub amount_equal_cipher_proof: CipherEqualDifferentPubKeyProof,
     pub non_neg_amount_proof: InRangeProof,
     pub enough_fund_proof: InRangeProof,
@@ -139,15 +139,6 @@ pub struct InitializedTransferTx {
     pub amount_correctness_proof: CorrectnessProof,
     pub auditors_payload: Vec<AuditorPayload>,
 }
-
-/// TODO: remove, not needed.
-#[derive(Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FinalizedTransferTx {}
-
-/// Wrapper for the contents and auditors' payload.
-#[derive(Clone, Encode, Decode, Debug)]
-pub struct JustifiedTransferTx {}
 
 /// The interface for confidential transaction.
 pub trait TransferTransactionSender {
@@ -164,7 +155,7 @@ pub trait TransferTransactionSender {
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Result<InitializedTransferTx>;
+    ) -> Result<ConfidentialTransferProof>;
 }
 
 pub trait TransferTransactionReceiver {
@@ -173,24 +164,24 @@ pub trait TransferTransactionReceiver {
     /// of the MERCAT paper.
     fn finalize_transaction(
         &self,
-        initialized_transaction: &InitializedTransferTx,
+        initialized_transaction: &ConfidentialTransferProof,
         receiver_account: ElgamalKeys,
         amount: Balance,
-    ) -> Result<FinalizedTransferTx>;
+    ) -> Result<()>;
 }
 
 pub trait TransferTransactionMediator {
     /// Justify the transaction by mediator.
     fn justify_transaction<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         amount_source: AmountSource,
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
         receiver_account: &ElgamalPublicKey,
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
-    ) -> Result<JustifiedTransferTx>;
+    ) -> Result<()>;
 }
 
 pub trait TransferTransactionVerifier {
@@ -198,7 +189,7 @@ pub trait TransferTransactionVerifier {
     /// The receiver and mediator need to verify the transaction amount.
     fn verify_transaction<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
         receiver_account: &ElgamalPublicKey,
@@ -212,7 +203,7 @@ pub trait TransferTransactionAuditor {
     /// Audit the sender's encrypted amount.
     fn audit_transaction(
         &self,
-        init_tx: &InitializedTransferTx,
+        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
         receiver_account: &ElgamalPublicKey,
         auditor_enc_keys: &(AuditorId, ElgamalKeys),
