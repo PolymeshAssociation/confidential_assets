@@ -19,9 +19,9 @@ use confidential_assets::{
         verify_amount_correctness, verify_initialized_transaction, CtxMediator, CtxReceiver,
         CtxSender, TransactionValidator,
     },
-    Account, AmountSource, Balance, EncryptedAmount, EncryptedAmountWithHint, EncryptionPubKey,
-    EncryptionSecKey, InitializedTransferTx, JustifiedTransferTx, MediatorAccount, PubAccount,
-    Scalar, TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
+    AmountSource, Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, EncryptedAmount,
+    EncryptedAmountWithHint, InitializedTransferTx, JustifiedTransferTx, Scalar,
+    TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
     TransferTransactionVerifier, BALANCE_RANGE,
 };
 use rand::thread_rng;
@@ -43,12 +43,12 @@ const RECEIVER_INIT_BALANCE: Balance = 10000;
 #[derive(Clone)]
 struct SenderProofGen {
     // Inputs.
-    sender_sec: EncryptionSecKey,
-    sender_pub: EncryptionPubKey,
+    sender_sec: ElgamalSecretKey,
+    sender_pub: ElgamalPublicKey,
     sender_init_balance: EncryptedAmount,
     sender_balance: Balance,
-    receiver_pub: EncryptionPubKey,
-    mediator_pub: EncryptionPubKey,
+    receiver_pub: ElgamalPublicKey,
+    mediator_pub: ElgamalPublicKey,
     pub amount: Balance,
     // Temps.
     last_stage: u32,
@@ -69,21 +69,21 @@ struct SenderProofGen {
 
 impl SenderProofGen {
     pub fn new<T: RngCore + CryptoRng>(
-        sender_account: &Account,
+        sender_account: &ElgamalKeys,
         sender_init_balance: &EncryptedAmount,
         sender_balance: Balance,
-        receiver_pub_account: &PubAccount,
-        mediator_pub_key: &EncryptionPubKey,
+        receiver_pub_account: &ElgamalPublicKey,
+        mediator_pub_key: &ElgamalPublicKey,
         amount: Balance,
         rng: &mut T,
     ) -> Self {
         Self {
             // Inputs.
-            sender_sec: sender_account.secret.enc_keys.secret.clone(),
-            sender_pub: sender_account.secret.enc_keys.public.clone(),
+            sender_sec: sender_account.secret.clone(),
+            sender_pub: sender_account.public.clone(),
             sender_init_balance: sender_init_balance.clone(),
             sender_balance,
-            receiver_pub: receiver_pub_account.owner_enc_pub_key.clone(),
+            receiver_pub: receiver_pub_account.clone(),
             mediator_pub: mediator_pub_key.clone(),
             amount,
 
@@ -214,10 +214,10 @@ impl SenderProofGen {
 
 fn bench_transaction_sender_proof_stage(
     c: &mut Criterion,
-    sender_account: Account,
+    sender_account: ElgamalKeys,
     sender_balances: &[(Balance, EncryptedAmount)],
-    rcvr_pub_account: PubAccount,
-    mediator_pub_key: EncryptionPubKey,
+    rcvr_pub_account: ElgamalPublicKey,
+    mediator_pub_key: ElgamalPublicKey,
     bench_stage: u32,
 ) {
     let mut rng = thread_rng();
@@ -266,10 +266,10 @@ fn bench_transaction_sender_proof_stage(
 
 fn bench_transaction_sender(
     c: &mut Criterion,
-    sender_account: Account,
+    sender_account: ElgamalKeys,
     sender_balances: Vec<(Balance, EncryptedAmount)>,
-    rcvr_pub_account: PubAccount,
-    mediator_pub_key: EncryptionPubKey,
+    rcvr_pub_account: ElgamalPublicKey,
+    mediator_pub_key: ElgamalPublicKey,
 ) -> Vec<(Balance, EncryptedAmount, InitializedTransferTx)> {
     let mut rng = thread_rng();
 
@@ -325,8 +325,8 @@ fn bench_transaction_sender(
 
 fn bench_transaction_verify_sender_proof(
     c: &mut Criterion,
-    sender_account: PubAccount,
-    receiver_account: PubAccount,
+    sender_account: ElgamalPublicKey,
+    receiver_account: ElgamalPublicKey,
     transactions: &[(Balance, EncryptedAmount, InitializedTransferTx)],
 ) {
     let mut rng = thread_rng();
@@ -355,7 +355,7 @@ fn bench_transaction_verify_sender_proof(
 
 fn bench_transaction_receiver(
     c: &mut Criterion,
-    receiver_account: Account,
+    receiver_account: ElgamalKeys,
     transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
 ) -> Vec<(Balance, EncryptedAmount, InitializedTransferTx)> {
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -389,9 +389,9 @@ fn bench_transaction_receiver(
 
 fn bench_transaction_mediator(
     c: &mut Criterion,
-    mediator_account: MediatorAccount,
-    sender_pub_account: PubAccount,
-    receiver_pub_account: PubAccount,
+    mediator_account: ElgamalKeys,
+    sender_pub_account: ElgamalPublicKey,
+    receiver_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
 ) -> Vec<JustifiedTransferTx> {
     let mut rng = thread_rng();
@@ -408,7 +408,7 @@ fn bench_transaction_mediator(
                     mediator
                         .justify_transaction(
                             init_tx,
-                            AmountSource::Encrypted(&mediator_account.encryption_key),
+                            AmountSource::Encrypted(&mediator_account),
                             &sender_pub_account,
                             sender_balance,
                             &receiver_pub_account,
@@ -429,7 +429,7 @@ fn bench_transaction_mediator(
             mediator
                 .justify_transaction(
                     &init_tx,
-                    AmountSource::Encrypted(&mediator_account.encryption_key),
+                    AmountSource::Encrypted(&mediator_account),
                     &sender_pub_account,
                     &sender_balance,
                     &receiver_pub_account,
@@ -443,8 +443,8 @@ fn bench_transaction_mediator(
 
 fn bench_transaction_validator(
     c: &mut Criterion,
-    sender_pub_account: PubAccount,
-    receiver_pub_account: PubAccount,
+    sender_pub_account: ElgamalPublicKey,
+    receiver_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
 ) {
     let mut rng = thread_rng();
@@ -477,7 +477,7 @@ fn bench_transaction_validator(
 
 fn bench_transaction_amount_correctness(
     c: &mut Criterion,
-    sender_pub_account: PubAccount,
+    sender_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -496,7 +496,7 @@ fn bench_transaction_amount_correctness(
 
 fn bench_transaction_brute_force_amount_correctness(
     c: &mut Criterion,
-    sender_pub_account: PubAccount,
+    sender_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, EncryptedAmount, InitializedTransferTx)>,
 ) {
     let mut group = c.benchmark_group("MERCAT Attack");

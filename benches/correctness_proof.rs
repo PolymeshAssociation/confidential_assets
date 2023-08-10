@@ -8,7 +8,7 @@ use confidential_assets::{
         encryption_proofs::{ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL},
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    Balance, InitializedTransferTx, PubAccount,
+    Balance, ElgamalPublicKey, InitializedTransferTx,
 };
 
 fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint, RistrettoPoint) {
@@ -36,7 +36,7 @@ fn setup_correctness_search(init_tx: &InitializedTransferTx) -> (RistrettoPoint,
 
 pub fn brute_force_amount_correctness(
     init_tx: &InitializedTransferTx,
-    _sender: &PubAccount,
+    _sender: &ElgamalPublicKey,
 ) -> Option<Balance> {
     // Setup "proof" verification.
     let (gen_b, target) = setup_correctness_search(init_tx);

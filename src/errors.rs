@@ -59,7 +59,7 @@ pub enum Error {
 
     /// The account Id in the transaction does not match the input account info.
     #[error("The account does not match the account on the transaction")]
-    AccountIdMismatch,
+    ElgamalKeysIdMismatch,
 
     /// The mercat transaction id does not match the one supplied previously.
     #[error("The mercat transaction id does not match the one supplied previously.")]

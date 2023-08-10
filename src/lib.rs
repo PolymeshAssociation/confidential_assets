@@ -63,23 +63,14 @@ pub const BALANCE_RANGE: u32 = 64;
 // -                                 New Type Def                                      -
 // -------------------------------------------------------------------------------------
 
-/// Holds ElGamal encryption public key.
-pub type EncryptionPubKey = ElgamalPublicKey;
-
-/// Holds a compressed ElGamal encryption public key.
-pub type CompressedEncryptionPubKey = CompressedElgamalPublicKey;
-
-/// Holds ElGamal encryption secret key.
-pub type EncryptionSecKey = ElgamalSecretKey;
-
 /// Holds ElGamal encryption keys.
 #[derive(Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Zeroize, ZeroizeOnDrop)]
-pub struct EncryptionKeys {
+pub struct ElgamalKeys {
     #[zeroize(skip)]
-    pub public: EncryptionPubKey,
-    pub secret: EncryptionSecKey,
+    pub public: ElgamalPublicKey,
+    pub secret: ElgamalSecretKey,
 }
 
 /// New type for Twisted ElGamal ciphertext of account amounts/balances.
@@ -89,79 +80,6 @@ pub type EncryptedAmount = CipherText;
 pub type EncryptedAmountWithHint = CipherTextWithHint;
 
 // -------------------------------------------------------------------------------------
-// -                                    Account                                        -
-// -------------------------------------------------------------------------------------
-
-#[derive(Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct MediatorAccount {
-    pub encryption_key: EncryptionKeys,
-}
-
-#[derive(Clone, Encode, Decode, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PubAccount {
-    pub owner_enc_pub_key: EncryptionPubKey,
-}
-
-impl From<EncryptionKeys> for PubAccount {
-    fn from(enc_keys: EncryptionKeys) -> Self {
-        Self {
-            owner_enc_pub_key: enc_keys.public,
-        }
-    }
-}
-
-impl From<&EncryptionKeys> for PubAccount {
-    fn from(enc_keys: &EncryptionKeys) -> Self {
-        Self::from(enc_keys.clone())
-    }
-}
-
-/// Holds the secret keys and asset id of an account. This cannot be put on the change.
-#[derive(Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SecAccount {
-    pub enc_keys: EncryptionKeys,
-}
-
-impl From<EncryptionKeys> for SecAccount {
-    fn from(enc_keys: EncryptionKeys) -> Self {
-        Self { enc_keys }
-    }
-}
-
-impl From<&EncryptionKeys> for SecAccount {
-    fn from(enc_keys: &EncryptionKeys) -> Self {
-        Self::from(enc_keys.clone())
-    }
-}
-
-/// Wrapper for both the secret and public account info
-#[derive(Clone, Debug)]
-pub struct Account {
-    pub public: PubAccount,
-    pub secret: SecAccount,
-}
-
-impl From<EncryptionKeys> for Account {
-    fn from(enc_keys: EncryptionKeys) -> Self {
-        Self {
-            public: PubAccount {
-                owner_enc_pub_key: enc_keys.public,
-            },
-            secret: SecAccount { enc_keys },
-        }
-    }
-}
-
-impl From<&EncryptionKeys> for Account {
-    fn from(enc_keys: &EncryptionKeys) -> Self {
-        Self::from(enc_keys.clone())
-    }
-}
-
-// -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
@@ -169,7 +87,7 @@ pub type AuditorId = u32;
 
 #[derive(Clone, Debug)]
 pub enum AmountSource<'a> {
-    Encrypted(&'a EncryptionKeys),
+    Encrypted(&'a ElgamalKeys),
     Amount(Balance),
 }
 
@@ -238,12 +156,12 @@ pub trait TransferTransactionSender {
     /// MERCAT paper.
     fn create_transaction<T: RngCore + CryptoRng>(
         &self,
-        sender_account: &Account,
+        sender_account: &ElgamalKeys,
         sender_init_balance: &EncryptedAmount,
         sender_balance: Balance,
-        receiver_pub_account: &PubAccount,
-        mediator_pub_key: Option<&EncryptionPubKey>,
-        auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
+        receiver_pub_account: &ElgamalPublicKey,
+        mediator_pub_key: Option<&ElgamalPublicKey>,
+        auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         amount: Balance,
         rng: &mut T,
     ) -> Result<InitializedTransferTx>;
@@ -256,7 +174,7 @@ pub trait TransferTransactionReceiver {
     fn finalize_transaction(
         &self,
         initialized_transaction: &InitializedTransferTx,
-        receiver_account: Account,
+        receiver_account: ElgamalKeys,
         amount: Balance,
     ) -> Result<FinalizedTransferTx>;
 }
@@ -267,10 +185,10 @@ pub trait TransferTransactionMediator {
         &self,
         init_tx: &InitializedTransferTx,
         amount_source: AmountSource,
-        sender_account: &PubAccount,
+        sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
-        receiver_account: &PubAccount,
-        auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
+        receiver_account: &ElgamalPublicKey,
+        auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
     ) -> Result<JustifiedTransferTx>;
 }
@@ -281,10 +199,10 @@ pub trait TransferTransactionVerifier {
     fn verify_transaction<R: RngCore + CryptoRng>(
         &self,
         init_tx: &InitializedTransferTx,
-        sender_account: &PubAccount,
+        sender_account: &ElgamalPublicKey,
         sender_init_balance: &EncryptedAmount,
-        receiver_account: &PubAccount,
-        auditors_enc_pub_keys: &[(AuditorId, EncryptionPubKey)],
+        receiver_account: &ElgamalPublicKey,
+        auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
     ) -> Result<()>;
 }
@@ -295,8 +213,8 @@ pub trait TransferTransactionAuditor {
     fn audit_transaction(
         &self,
         init_tx: &InitializedTransferTx,
-        sender_account: &PubAccount,
-        receiver_account: &PubAccount,
-        auditor_enc_keys: &(AuditorId, EncryptionKeys),
+        sender_account: &ElgamalPublicKey,
+        receiver_account: &ElgamalPublicKey,
+        auditor_enc_keys: &(AuditorId, ElgamalKeys),
     ) -> Result<()>;
 }
