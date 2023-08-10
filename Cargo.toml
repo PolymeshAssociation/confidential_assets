@@ -79,3 +79,15 @@ std = [
 [[bench]]
 name = "elgamal_decryption"
 harness = false
+
+[[bench]]
+name = "mercat_account"
+harness = false
+
+[[bench]]
+name = "mercat_asset"
+harness = false
+
+[[bench]]
+name = "mercat_transaction"
+harness = false
