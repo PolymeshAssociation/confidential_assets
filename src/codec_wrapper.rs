@@ -109,9 +109,6 @@ pub struct RangeProofEncoder<'a>(pub &'a RangeProof);
 impl<'a> Encode for RangeProofEncoder<'a> {
     fn size_hint(&self) -> usize {
         // See `RangeProof::to_bytes`.
-        #[cfg(not(feature = "balance_64"))]
-        const LOG_OF_NUM_SECRET_BITS: usize = 5;
-        #[cfg(feature = "balance_64")]
         const LOG_OF_NUM_SECRET_BITS: usize = 6;
         const SIZE: usize = (2 * LOG_OF_NUM_SECRET_BITS + 9) * 32;
 

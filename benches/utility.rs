@@ -4,16 +4,6 @@ use confidential_assets::{
 };
 use rand::{CryptoRng, RngCore};
 
-#[cfg(not(feature = "balance_64"))]
-#[allow(dead_code)]
-pub mod balance_range {
-    pub const MIN_ISSUED_AMOUNT_ORDER: u32 = 5;
-    pub const MAX_ISSUED_AMOUNT_ORDER: u32 = 10;
-    pub const MIN_SENDER_BALANCE_ORDER: u32 = 5;
-    pub const MAX_SENDER_BALANCE_ORDER: u32 = 10;
-}
-#[cfg(feature = "balance_64")]
-#[allow(dead_code)]
 pub mod balance_range {
     pub const MIN_ISSUED_AMOUNT_ORDER: u32 = 10;
     pub const MAX_ISSUED_AMOUNT_ORDER: u32 = 20;

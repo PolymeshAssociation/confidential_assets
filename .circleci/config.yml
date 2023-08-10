@@ -97,12 +97,8 @@ jobs:
           keys:
             - v6-bench-cache-{{ checksum "./rust.version" }}
       - run:
-          name: Run benchmarks 32bit balances.
+          name: Run benchmarks
           command: cargo bench
-          no_output_timeout: 30m
-      - run:
-          name: Run benchmarks 64bit balances.
-          command: cargo bench --features balance_64
           no_output_timeout: 30m
       - save_cache:
           key: v6-bench-cache-{{ checksum "./rust.version" }}

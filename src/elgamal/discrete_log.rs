@@ -76,12 +76,7 @@ impl DiscreteLog {
         self.decode_limit(starting_point, Balance::MAX)
     }
 
-    #[cfg(not(feature = "balance_64"))]
-    pub fn decode_limit(self, starting_point: RistrettoPoint, _limit: Balance) -> Option<Balance> {
-        self.decode_u32(starting_point)
-    }
-
-    #[cfg(all(not(feature = "rayon"), feature = "balance_64"))]
+    #[cfg(not(feature = "rayon"))]
     pub fn decode_limit(
         self,
         mut starting_point: RistrettoPoint,
@@ -105,7 +100,7 @@ impl DiscreteLog {
         None
     }
 
-    #[cfg(all(feature = "rayon", feature = "balance_64"))]
+    #[cfg(feature = "rayon")]
     pub fn decode_limit(
         self,
         mut starting_point: RistrettoPoint,

@@ -42,7 +42,7 @@ pub use proofs::{
 ///
 /// Since Elgamal decryption involves searching the entire
 /// space of possible values. We have limited
-/// the size of the balance to 32 bits (or 64 bits with feature flag `balance_64`).
+/// the size of the balance to 64 bits.
 ///
 /// Possible remedies are:
 /// #0 limit the range even further since confidential values
@@ -56,13 +56,7 @@ pub use proofs::{
 ///    we won't need to decrypt the encrypted values very often.
 ///    We can recommend that applications use a different faster
 ///    encryption mechanism to store the confidentional values on disk.
-#[cfg(not(feature = "balance_64"))]
-pub type Balance = u32;
-#[cfg(not(feature = "balance_64"))]
-pub const BALANCE_RANGE: u32 = 32;
-#[cfg(feature = "balance_64")]
 pub type Balance = u64;
-#[cfg(feature = "balance_64")]
 pub const BALANCE_RANGE: u32 = 64;
 
 // -------------------------------------------------------------------------------------

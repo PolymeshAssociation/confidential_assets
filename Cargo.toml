@@ -46,9 +46,6 @@ criterion = { version = "0.3" }
 default = ["std", "u64_backend", "rayon", "discrete_log"]
 nightly = ["curve25519-dalek/nightly"]
 
-# 64bit Balances. (default to 32bit)
-balance_64 = []
-
 # Discrete log Elgamal decryption.
 discrete_log = ["bincode", "itertools", "lazy_static"]
 

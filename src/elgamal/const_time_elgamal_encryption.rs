@@ -153,9 +153,6 @@ impl ElgamalSecretKey {
         use byteorder::{ByteOrder, LittleEndian};
 
         let decrypted_msg = xor_with_one_time_pad(random_2_h, &cipher_text.z);
-        #[cfg(not(feature = "balance_64"))]
-        let decrypted_value = LittleEndian::read_u32(&decrypted_msg);
-        #[cfg(feature = "balance_64")]
         let decrypted_value = LittleEndian::read_u64(&decrypted_msg);
 
         // Verify that the same value was encrypted using twisted Elgamal encryption.
