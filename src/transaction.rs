@@ -17,8 +17,7 @@ use crate::{
     Account, AmountSource, AuditorId, AuditorPayload, Balance, EncryptedAmount, EncryptionKeys,
     EncryptionPubKey, FinalizedTransferTx, InitializedTransferTx, JustifiedTransferTx, PubAccount,
     Scalar, TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
-    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo,
-    BALANCE_RANGE,
+    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, BALANCE_RANGE,
 };
 
 use rand_core::{CryptoRng, RngCore};
@@ -480,7 +479,6 @@ mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
     use crate::{
-        account::{deposit, withdraw},
         elgamal::ElgamalSecretKey,
         proofs::{
             ciphertext_refreshment_proof::CipherEqualSamePubKeyProof,
@@ -692,14 +690,10 @@ mod tests {
         // ----------------------- Processing
         // Check that the transferred amount is added to the receiver's account balance
         // and subtracted from sender's balance.
-        let updated_sender_balance = withdraw(
-            &sender_init_balance,
-            &ctx_init_data.memo.enc_amount_using_sender,
-        );
-        let updated_receiver_balance = deposit(
-            &receiver_init_balance,
-            &ctx_init_data.memo.enc_amount_using_receiver,
-        );
+        let updated_sender_balance =
+            sender_init_balance - ctx_init_data.memo.enc_amount_using_sender;
+        let updated_receiver_balance =
+            receiver_init_balance + ctx_init_data.memo.enc_amount_using_receiver;
 
         assert!(sender_enc_keys
             .secret
@@ -817,12 +811,9 @@ mod tests {
         // ----------------------- Processing
         // Check that the transferred amount is added to the receiver's account balance
         // and subtracted from sender's balance.
-        let updated_sender_balance =
-            withdraw(&sender_init_balance, &ctx_init.memo.enc_amount_using_sender);
-        let updated_receiver_balance = deposit(
-            &receiver_init_balance,
-            &ctx_init.memo.enc_amount_using_receiver,
-        );
+        let updated_sender_balance = sender_init_balance - ctx_init.memo.enc_amount_using_sender;
+        let updated_receiver_balance =
+            receiver_init_balance - ctx_init.memo.enc_amount_using_receiver;
 
         assert!(sender_account
             .secret

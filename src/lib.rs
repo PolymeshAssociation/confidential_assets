@@ -124,15 +124,6 @@ impl From<&EncryptionKeys> for PubAccount {
     }
 }
 
-/// Holds contents of the public portion of an account which can be safely put on the chain.
-#[derive(Clone, Encode, Decode, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PubAccountTx {
-    pub pub_account: PubAccount,
-    pub initial_balance: EncryptedAmount,
-    pub initial_balance_correctness_proof: CorrectnessProof,
-}
-
 /// Holds the secret keys and asset id of an account. This cannot be put on the change.
 #[derive(Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

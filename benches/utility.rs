@@ -1,8 +1,6 @@
 use confidential_assets::{
-    account::{deposit, AccountCreator},
-    elgamal::ElgamalSecretKey,
-    Account, AccountCreatorInitializer, Balance, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
-    MediatorAccount, PubAccount, PubAccountTx, Scalar, SecAccount,
+    elgamal::ElgamalSecretKey, Account, Balance, EncryptedAmount, EncryptionKeys, EncryptionPubKey,
+    MediatorAccount, PubAccount, Scalar, SecAccount,
 };
 use rand::{CryptoRng, RngCore};
 
@@ -32,10 +30,9 @@ pub fn issue_assets<R: RngCore + CryptoRng>(
     let (_, encrypted_amount) = pub_account
         .owner_enc_pub_key
         .encrypt_value(amount.into(), rng);
-    deposit(init_balance, &encrypted_amount)
+    init_balance + encrypted_amount
 }
 
-#[allow(dead_code)]
 pub fn generate_mediator_keys<R: RngCore + CryptoRng>(
     rng: &mut R,
 ) -> (EncryptionPubKey, MediatorAccount) {
@@ -60,32 +57,23 @@ pub fn create_account_with_amount<R: RngCore + CryptoRng>(
 ) -> (Account, EncryptedAmount) {
     let secret_account = gen_keys(rng);
 
-    let account_creator = AccountCreator;
-    let pub_account_tx = account_creator.create(&secret_account, rng).unwrap();
     let account = Account {
+        public: PubAccount {
+            owner_enc_pub_key: secret_account.enc_keys.public.clone(),
+        },
         secret: secret_account,
-        public: pub_account_tx.pub_account,
     };
+    let (_, initial_balance) = account
+        .public
+        .owner_enc_pub_key
+        .encrypt_value(0u32.into(), rng);
     let initial_balance = if initial_amount > 0 {
-        issue_assets(
-            rng,
-            &account.public,
-            &pub_account_tx.initial_balance,
-            initial_amount,
-        )
+        issue_assets(rng, &account.public, &initial_balance, initial_amount)
     } else {
-        pub_account_tx.initial_balance
+        initial_balance
     };
 
     (account, initial_balance)
-}
-
-#[allow(dead_code)]
-pub fn create_account<R: RngCore + CryptoRng>(rng: &mut R) -> PubAccountTx {
-    let secret_account = gen_keys(rng);
-
-    let account_creator = AccountCreator;
-    account_creator.create(&secret_account, rng).unwrap()
 }
 
 pub fn gen_keys<R: RngCore + CryptoRng>(rng: &mut R) -> SecAccount {
