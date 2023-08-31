@@ -211,7 +211,6 @@ mod tests {
     use rand::{rngs::StdRng, SeedableRng};
     use sp_std::convert::TryFrom;
     use wasm_bindgen_test::*;
-    use zeroize::Zeroizing;
 
     const SEED_1: [u8; 32] = [42u8; 32];
     const SEED_2: [u8; 32] = [7u8; 32];
@@ -251,7 +250,7 @@ mod tests {
     ) {
         let prover = WellformednessProverAwaitingChallenge {
             pub_key,
-            w: Zeroizing::new(witness),
+            w: witness,
             pc_gens,
         };
         let verifier = WellformednessVerifier {

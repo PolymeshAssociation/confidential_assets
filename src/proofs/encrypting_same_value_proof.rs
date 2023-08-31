@@ -23,7 +23,7 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode, Error as CodecError, Input, Output};
 
@@ -134,17 +134,16 @@ pub struct EncryptingSameValueProverAwaitingChallenge<'a> {
     pub pub_key2: ElgamalPublicKey,
 
     /// The secret commitment witness.
-    pub w: Zeroizing<CommitmentWitness>,
+    pub w: CommitmentWitness,
 
     /// The Pedersen generators.
     pub pc_gens: &'a PedersenGens,
 }
 
-#[derive(Zeroize)]
-#[zeroize(drop)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct EncryptingSameValueProver {
     /// The secret commitment witness.
-    w: Zeroizing<CommitmentWitness>,
+    w: CommitmentWitness,
 
     /// The randomness generated in the first round.
     u1: Scalar,
@@ -276,7 +275,7 @@ mod tests {
         let prover_ac = EncryptingSameValueProverAwaitingChallenge {
             pub_key1: elg_pub1,
             pub_key2: elg_pub2,
-            w: Zeroizing::new(w),
+            w,
             pc_gens: &gens,
         };
         let verifier = EncryptingSameValueVerifier {
@@ -335,7 +334,7 @@ mod tests {
         let prover = EncryptingSameValueProverAwaitingChallenge {
             pub_key1: elg_pub1,
             pub_key2: elg_pub2,
-            w: Zeroizing::new(w),
+            w,
             pc_gens: &gens,
         };
 

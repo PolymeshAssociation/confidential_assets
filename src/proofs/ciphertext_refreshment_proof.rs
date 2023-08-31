@@ -26,7 +26,7 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode, Error as CodecError, Input, Output};
 
@@ -142,8 +142,7 @@ impl<'a> CipherTextRefreshmentProverAwaitingChallenge<'a> {
     }
 }
 
-#[derive(Zeroize)]
-#[zeroize(drop)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct CipherTextRefreshmentProver {
     /// The secret key.
     secret_key: ElgamalSecretKey,

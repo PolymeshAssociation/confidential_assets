@@ -23,7 +23,6 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
 
 use codec::{Decode, Encode, Error as CodecError, Input, Output};
 
@@ -113,7 +112,7 @@ pub type WellformednessProof =
 #[derive(Clone, Debug)]
 pub struct WellformednessProver {
     /// The secret commitment witness.
-    w: Zeroizing<CommitmentWitness>,
+    w: CommitmentWitness,
     /// The randomness generate in the first round.
     rand_a: Scalar,
     rand_b: Scalar,
@@ -125,7 +124,7 @@ pub struct WellformednessProverAwaitingChallenge<'a> {
     pub pub_key: ElgamalPublicKey,
 
     /// The secret commitment witness.
-    pub w: Zeroizing<CommitmentWitness>,
+    pub w: CommitmentWitness,
 
     /// The Pedersen generators.
     pub pc_gens: &'a PedersenGens,
@@ -231,7 +230,7 @@ mod tests {
 
         let prover = WellformednessProverAwaitingChallenge {
             pub_key,
-            w: Zeroizing::new(w.clone()),
+            w: w.clone(),
             pc_gens: &gens,
         };
         let verifier = WellformednessVerifier {
@@ -285,7 +284,7 @@ mod tests {
         // ------------------------------- Non-interactive case
         let prover = WellformednessProverAwaitingChallenge {
             pub_key,
-            w: Zeroizing::new(w),
+            w,
             pc_gens: &gens,
         };
         let verifier = WellformednessVerifier {
@@ -335,7 +334,7 @@ mod tests {
 
         let prover = WellformednessProverAwaitingChallenge {
             pub_key,
-            w: Zeroizing::new(w),
+            w,
             pc_gens: &gens,
         };
         let (initial_message, final_response) = encryption_proofs::single_property_prover::<

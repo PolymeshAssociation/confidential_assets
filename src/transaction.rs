@@ -22,7 +22,6 @@ use crate::{
 
 use rand_core::{CryptoRng, RngCore};
 use sp_std::vec::Vec;
-use zeroize::Zeroizing;
 
 // -------------------------------------------------------------------------------------
 // -                                    Sender                                         -
@@ -73,7 +72,7 @@ impl TransferTransactionSender for CtxSender {
             EncryptingSameValueProverAwaitingChallenge {
                 pub_key1: sender_account.public,
                 pub_key2: *receiver_pub_key,
-                w: Zeroizing::new(witness.clone()),
+                w: witness.clone(),
                 pc_gens: &gens,
             },
             rng,
@@ -167,7 +166,7 @@ fn add_transaction_auditor<T: RngCore + CryptoRng>(
                 EncryptingSameValueProverAwaitingChallenge {
                     pub_key1: *sender_enc_pub_key,
                     pub_key2: *auditor_enc_pub_key,
-                    w: Zeroizing::new(amount_witness.clone()),
+                    w: amount_witness.clone(),
                     pc_gens: &gens,
                 },
                 rng,
@@ -479,6 +478,7 @@ mod tests {
         },
         ElgamalKeys, ElgamalPublicKey, EncryptedAmount, Scalar, TransferTxMemo,
     };
+    use codec::Compact;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use rand_core::{CryptoRng, RngCore};
@@ -800,7 +800,7 @@ mod tests {
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (index, auditor_keys)
+                (Compact(index), auditor_keys)
             })
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();

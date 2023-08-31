@@ -13,7 +13,7 @@ use rand_core::{CryptoRng, RngCore};
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, Compact};
 use sp_std::vec::Vec;
 
 pub use curve25519_dalek::scalar::Scalar;
@@ -83,7 +83,7 @@ pub type EncryptedAmountWithHint = CipherTextWithHint;
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
-pub type AuditorId = u32;
+pub type AuditorId = Compact<u32>;
 
 #[derive(Clone, Debug)]
 pub enum AmountSource<'a> {

@@ -26,7 +26,6 @@ use confidential_assets::{
 };
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
-use zeroize::Zeroizing;
 
 mod correctness_proof;
 mod utility;
@@ -143,7 +142,7 @@ impl SenderProofGen {
                     EncryptingSameValueProverAwaitingChallenge {
                         pub_key1: self.sender_pub,
                         pub_key2: self.receiver_pub,
-                        w: Zeroizing::new(self.witness.clone()),
+                        w: self.witness.clone(),
                         pc_gens: &self.gens,
                     },
                     rng,

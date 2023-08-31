@@ -21,7 +21,7 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode, Error as CodecError, Input, Output};
 use sp_std::convert::From;
@@ -122,8 +122,7 @@ pub struct CorrectnessProverAwaitingChallenge<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-#[derive(Zeroize)]
-#[zeroize(drop)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct CorrectnessProver {
     /// The secret commitment witness.
     w: CommitmentWitness,

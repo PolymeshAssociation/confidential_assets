@@ -24,7 +24,7 @@ use rand_core::{CryptoRng, RngCore};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode, EncodeLike, Error as CodecError, Input, Output};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
@@ -36,8 +36,7 @@ pub mod discrete_log;
 pub use const_time_elgamal_encryption::CipherTextWithHint;
 /// Prover's representation of the commitment secret.
 
-#[derive(Clone, PartialEq, Zeroize, Debug)]
-#[zeroize(drop)]
+#[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CommitmentWitness {
     /// Depending on how the witness was created this variable stores the
@@ -201,9 +200,8 @@ define_sub_assign_variants!(LHS = CipherText, RHS = CipherText);
 /// where g and h are 2 orthogonal generators.
 
 /// An Elgamal Secret Key is a random scalar.
-#[derive(Clone, Zeroize, Debug)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[zeroize(drop)]
 pub struct ElgamalSecretKey {
     pub secret: Scalar,
 }
