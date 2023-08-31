@@ -142,7 +142,6 @@
 //! };
 //! use rand::{rngs::StdRng, SeedableRng};
 //! use std::convert::TryFrom;
-//! use zeroize::{Zeroizing};
 //! use bulletproofs::PedersenGens;
 //! use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 //! use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
@@ -162,7 +161,7 @@
 //! let prover_0 = CorrectnessProverAwaitingChallenge{pub_key, w: w.clone(), pc_gens: &gens};
 //! let verifier_0 = CorrectnessVerifier{value: Scalar::from(secret_value), pub_key, cipher, pc_gens: &gens};
 //!
-//! let prover_1 = WellformednessProverAwaitingChallenge { pub_key: pub_key, w: Zeroizing::new(w) , pc_gens :&gens };
+//! let prover_1 = WellformednessProverAwaitingChallenge { pub_key: pub_key, w , pc_gens :&gens };
 //! let verifier_1 = WellformednessVerifier { pub_key, cipher , pc_gens:&gens };
 //!
 //! let mut transcript_rng0 = prover_0.create_transcript_rng(&mut rng, &transcript);
@@ -203,6 +202,7 @@ pub mod encryption_proofs;
 pub mod ciphertext_refreshment_proof;
 pub mod correctness_proof;
 pub mod encrypting_same_value_proof;
+pub mod ciphertext_same_value_proof;
 pub mod range_proof;
 pub mod transcript;
 pub mod wellformedness_proof;

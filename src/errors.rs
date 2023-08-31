@@ -33,6 +33,10 @@ pub enum Error {
     #[error("Failed to verify the check number {check} of the encrypting the same value proof")]
     EncryptingSameValueFinalResponseVerificationError { check: u16 },
 
+    /// Failed to verify a ciphertext the same value proof.
+    #[error("Failed to verify the check number {check} of the ciphertext same value proof")]
+    CiphertextSameValueFinalResponseVerificationError { check: u16 },
+
     /// Elements set is empty.
     #[error("The elements set passed to the membership proof cannot be empty.")]
     EmptyElementsSet,
