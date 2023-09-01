@@ -30,12 +30,13 @@ use codec::{Decode, Encode, EncodeLike, Error as CodecError, Input, Output};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
+pub mod multi_key;
 pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
 pub use const_time_elgamal_encryption::CipherTextWithHint;
-/// Prover's representation of the commitment secret.
 
+/// Prover's representation of the commitment secret.
 #[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CommitmentWitness {
