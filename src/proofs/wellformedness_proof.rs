@@ -8,7 +8,7 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
             ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
@@ -130,7 +130,7 @@ pub struct WellformednessProverAwaitingChallenge<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-impl<'a> AssetProofProverAwaitingChallenge for WellformednessProverAwaitingChallenge<'a> {
+impl<'a> ProofProverAwaitingChallenge for WellformednessProverAwaitingChallenge<'a> {
     type ZKInitialMessage = WellformednessInitialMessage;
     type ZKFinalResponse = WellformednessFinalResponse;
     type ZKProver = WellformednessProver;
@@ -163,7 +163,7 @@ impl<'a> AssetProofProverAwaitingChallenge for WellformednessProverAwaitingChall
     }
 }
 
-impl AssetProofProver<WellformednessFinalResponse> for WellformednessProver {
+impl ProofProver<WellformednessFinalResponse> for WellformednessProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> WellformednessFinalResponse {
         WellformednessFinalResponse {
             z1: self.rand_a + c.x() * self.w.blinding(),
@@ -179,7 +179,7 @@ pub struct WellformednessVerifier<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-impl<'a> AssetProofVerifier for WellformednessVerifier<'a> {
+impl<'a> ProofVerifier for WellformednessVerifier<'a> {
     type ZKInitialMessage = WellformednessInitialMessage;
     type ZKFinalResponse = WellformednessFinalResponse;
 

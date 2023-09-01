@@ -11,7 +11,7 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
             ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
@@ -151,7 +151,7 @@ pub struct CipherTextRefreshmentProver {
     u: Scalar,
 }
 
-impl<'a> AssetProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingChallenge<'a> {
+impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingChallenge<'a> {
     type ZKInitialMessage = CipherTextRefreshmentInitialMessage;
     type ZKFinalResponse = CipherTextRefreshmentFinalResponse;
     type ZKProver = CipherTextRefreshmentProver;
@@ -186,7 +186,7 @@ impl<'a> AssetProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaiti
     }
 }
 
-impl AssetProofProver<CipherTextRefreshmentFinalResponse> for CipherTextRefreshmentProver {
+impl ProofProver<CipherTextRefreshmentFinalResponse> for CipherTextRefreshmentProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CipherTextRefreshmentFinalResponse {
         CipherTextRefreshmentFinalResponse(self.u + c.x() * self.secret_key.secret)
     }
@@ -222,7 +222,7 @@ impl<'a> CipherTextRefreshmentVerifier<'a> {
     }
 }
 
-impl<'a> AssetProofVerifier for CipherTextRefreshmentVerifier<'a> {
+impl<'a> ProofVerifier for CipherTextRefreshmentVerifier<'a> {
     type ZKInitialMessage = CipherTextRefreshmentInitialMessage;
     type ZKFinalResponse = CipherTextRefreshmentFinalResponse;
 

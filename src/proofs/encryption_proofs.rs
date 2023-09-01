@@ -44,10 +44,10 @@ impl TryFrom<Scalar> for ZKPChallenge {
 /// Each proof needs to use the same `ZKInitialMessage` and `ZKFinalResponse` types
 /// between the prover and the verifier.
 /// Each `ZKInitialMessage` needs to implement the `UpdateTranscript` trait.
-pub trait AssetProofProverAwaitingChallenge {
+pub trait ProofProverAwaitingChallenge {
     type ZKInitialMessage: UpdateTranscript;
     type ZKFinalResponse;
-    type ZKProver: AssetProofProver<Self::ZKFinalResponse>;
+    type ZKProver: ProofProver<Self::ZKFinalResponse>;
 
     /// Create an RNG from current transcript's state and an RNG.
     /// This new RNG will be used by the prover to generate randomness
@@ -84,7 +84,7 @@ pub trait AssetProofProverAwaitingChallenge {
     ) -> (Self::ZKProver, Self::ZKInitialMessage);
 }
 
-pub trait AssetProofProver<ZKFinalResponse> {
+pub trait ProofProver<ZKFinalResponse> {
     /// Third round of the Sigma protocol. Prover receives a challenge and
     /// uses it to generate the final response.
     ///
@@ -96,7 +96,7 @@ pub trait AssetProofProver<ZKFinalResponse> {
     fn apply_challenge(&self, challenge: &ZKPChallenge) -> ZKFinalResponse;
 }
 
-pub trait AssetProofVerifier {
+pub trait ProofVerifier {
     type ZKInitialMessage: UpdateTranscript;
     type ZKFinalResponse;
 
@@ -131,14 +131,14 @@ pub type ZKProofResponse<ZKInitialMessage, ZKFinalResponse> = (ZKInitialMessage,
 /// encryption proof's prover role.
 ///
 /// # Inputs
-/// `prover` Any prover that implements the `AssetProofProver` trait.
+/// `prover` Any prover that implements the `ProofProver` trait.
 /// `rng`    An RNG.
 ///
 /// # Outputs
 /// An initial message and a final response as a tuple on success, or failure on an error.
 pub fn single_property_prover<
     T: RngCore + CryptoRng,
-    ProverAwaitingChallenge: AssetProofProverAwaitingChallenge,
+    ProverAwaitingChallenge: ProofProverAwaitingChallenge,
 >(
     prover_ac: ProverAwaitingChallenge,
     rng: &mut T,
@@ -166,12 +166,12 @@ pub fn single_property_prover<
 /// encryption proof's verifier role.
 ///
 /// # Inputs
-/// `verifier` Any verifier that implements the `AssetProofVerifier` trait.
+/// `verifier` Any verifier that implements the `ProofVerifier` trait.
 /// `proof`    Prover's initial message and final response.
 ///
 /// # Outputs
 /// Ok on success, or failure on error.
-pub fn single_property_verifier<Verifier: AssetProofVerifier>(
+pub fn single_property_verifier<Verifier: ProofVerifier>(
     verifier: &Verifier,
     proof: ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
 ) -> Result<()> {

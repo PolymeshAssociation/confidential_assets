@@ -127,7 +127,7 @@
 //! ```
 //! use confidential_assets::proofs::{
 //!     encryption_proofs::{
-//!         AssetProofProverAwaitingChallenge, AssetProofProver, AssetProofVerifier
+//!         ProofProverAwaitingChallenge, ProofProver, ProofVerifier
 //!     },
 //!     correctness_proof::{
 //!         CorrectnessInitialMessage, CorrectnessProverAwaitingChallenge, CorrectnessVerifier,

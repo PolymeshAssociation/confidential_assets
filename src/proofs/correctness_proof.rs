@@ -7,7 +7,7 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
             ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
@@ -131,7 +131,7 @@ pub struct CorrectnessProver {
     u: Scalar,
 }
 
-impl<'a> AssetProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a> {
+impl<'a> ProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a> {
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
     type ZKProver = CorrectnessProver;
@@ -163,7 +163,7 @@ impl<'a> AssetProofProverAwaitingChallenge for CorrectnessProverAwaitingChalleng
     }
 }
 
-impl AssetProofProver<CorrectnessFinalResponse> for CorrectnessProver {
+impl ProofProver<CorrectnessFinalResponse> for CorrectnessProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CorrectnessFinalResponse {
         CorrectnessFinalResponse(self.u + c.x() * self.w.blinding())
     }
@@ -183,7 +183,7 @@ pub struct CorrectnessVerifier<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-impl<'a> AssetProofVerifier for CorrectnessVerifier<'a> {
+impl<'a> ProofVerifier for CorrectnessVerifier<'a> {
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
 

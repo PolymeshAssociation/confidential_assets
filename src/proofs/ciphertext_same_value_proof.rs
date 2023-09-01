@@ -7,7 +7,7 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
             ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
@@ -146,7 +146,7 @@ pub struct CiphertextSameValueProver {
     u2: Scalar,
 }
 
-impl<'a> AssetProofProverAwaitingChallenge for CiphertextSameValueProverAwaitingChallenge<'a> {
+impl<'a> ProofProverAwaitingChallenge for CiphertextSameValueProverAwaitingChallenge<'a> {
     type ZKInitialMessage = CiphertextSameValueInitialMessage;
     type ZKFinalResponse = CiphertextSameValueFinalResponse;
     type ZKProver = CiphertextSameValueProver;
@@ -182,7 +182,7 @@ impl<'a> AssetProofProverAwaitingChallenge for CiphertextSameValueProverAwaiting
     }
 }
 
-impl AssetProofProver<CiphertextSameValueFinalResponse> for CiphertextSameValueProver {
+impl ProofProver<CiphertextSameValueFinalResponse> for CiphertextSameValueProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CiphertextSameValueFinalResponse {
         CiphertextSameValueFinalResponse {
             z1: self.u1 + c.x() * self.w.blinding(),
@@ -202,7 +202,7 @@ pub struct CiphertextSameValueVerifier<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-impl<'a> AssetProofVerifier for CiphertextSameValueVerifier<'a> {
+impl<'a> ProofVerifier for CiphertextSameValueVerifier<'a> {
     type ZKInitialMessage = CiphertextSameValueInitialMessage;
     type ZKFinalResponse = CiphertextSameValueFinalResponse;
 

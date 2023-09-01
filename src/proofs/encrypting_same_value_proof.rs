@@ -8,7 +8,7 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            AssetProofProver, AssetProofProverAwaitingChallenge, AssetProofVerifier, ZKPChallenge,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
             ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
@@ -152,7 +152,7 @@ pub struct EncryptingSameValueProver {
     u2: Scalar,
 }
 
-impl<'a> AssetProofProverAwaitingChallenge for EncryptingSameValueProverAwaitingChallenge<'a> {
+impl<'a> ProofProverAwaitingChallenge for EncryptingSameValueProverAwaitingChallenge<'a> {
     type ZKInitialMessage = EncryptingSameValueInitialMessage;
     type ZKFinalResponse = EncryptingSameValueFinalResponse;
     type ZKProver = EncryptingSameValueProver;
@@ -187,7 +187,7 @@ impl<'a> AssetProofProverAwaitingChallenge for EncryptingSameValueProverAwaiting
     }
 }
 
-impl AssetProofProver<EncryptingSameValueFinalResponse> for EncryptingSameValueProver {
+impl ProofProver<EncryptingSameValueFinalResponse> for EncryptingSameValueProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> EncryptingSameValueFinalResponse {
         EncryptingSameValueFinalResponse {
             z1: self.u1 + c.x() * self.w.blinding(),
@@ -213,7 +213,7 @@ pub struct EncryptingSameValueVerifier<'a> {
     pub pc_gens: &'a PedersenGens,
 }
 
-impl<'a> AssetProofVerifier for EncryptingSameValueVerifier<'a> {
+impl<'a> ProofVerifier for EncryptingSameValueVerifier<'a> {
     type ZKInitialMessage = EncryptingSameValueInitialMessage;
     type ZKFinalResponse = EncryptingSameValueFinalResponse;
 
