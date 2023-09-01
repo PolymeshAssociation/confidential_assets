@@ -290,7 +290,7 @@ impl ConfidentialTransferProof {
                             pub_key1: *sender_account,
                             pub_key2: *auditor_pub_key,
                             cipher1: self.memo.enc_amount_using_sender,
-                            cipher2: auditor.encrypted_amount.elgamal_cipher,
+                            cipher2: *auditor.encrypted_amount.ciphertext(),
                             pc_gens: &gens,
                         },
                         auditor.amount_equal_cipher_proof,

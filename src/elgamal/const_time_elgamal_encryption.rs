@@ -43,6 +43,75 @@ use crate::{
     Balance,
 };
 
+#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CipherTextHint {
+    y: RistrettoPoint,
+    z: [u8; 32],
+}
+
+impl Encode for CipherTextHint {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        RistrettoPointEncoder(&self.y).size_hint()
+            + self.z.size_hint()
+    }
+
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        RistrettoPointEncoder(&self.y).encode_to(dest);
+        self.z.encode_to(dest);
+    }
+}
+
+impl Decode for CipherTextHint {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let y = <RistrettoPointDecoder>::decode(input)?.0;
+        let z = <[u8; 32]>::decode(input)?;
+
+        Ok(CipherTextHint {
+            y,
+            z,
+        })
+    }
+}
+
+impl CipherTextHint {
+    pub fn new<R: RngCore + CryptoRng>(
+        witness: &CommitmentWitness,
+        rng: &mut R,
+    ) -> Self {
+        // Twisted Elgamal encryption.
+        let r1 = witness.blinding();
+
+        // Constant Time Elgamal encryption.
+        let message_bytes: [u8; 32] = witness.value().to_bytes();
+        let r2 = Scalar::random(rng);
+        let gens = PedersenGens::default();
+        let r2h = r2 * gens.B;
+
+        let y = gens.commit(r2, r1); // r1 * g + r2 * h
+        let z = xor_with_one_time_pad(r2h, &message_bytes);
+
+        Self {
+            y,
+            z,
+        }
+    }
+
+    /// Decrypt the value hint.
+    ///
+    /// `x` - `ciphertext.x / secret_key`
+    pub fn decrypt(&self, x: RistrettoPoint) -> u64 {
+        // random_2 * h = Y - X / secret_key
+        let random_2_h = self.y - x;
+
+        use byteorder::{ByteOrder, LittleEndian};
+
+        let decrypted_msg = xor_with_one_time_pad(random_2_h, &self.z);
+        LittleEndian::read_u64(&decrypted_msg)
+    }
+}
+
 /// This data structure wraps a twisted Elgamal cipher text with the
 /// regular Elgamal cipher text.
 /// Since regular Elgamal decryption is constant time, its result is
@@ -54,38 +123,39 @@ use crate::{
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextWithHint {
     // The twisted Elgamal cipher text.
-    pub elgamal_cipher: CipherText,
+    cipher: CipherText,
 
-    pub y: RistrettoPoint,
-    pub z: [u8; 32],
+    hint: CipherTextHint,
 }
 
 impl Encode for CipherTextWithHint {
     #[inline]
     fn size_hint(&self) -> usize {
-        self.elgamal_cipher.size_hint()
-            + RistrettoPointEncoder(&self.y).size_hint()
-            + self.z.size_hint()
+        self.cipher.size_hint()
+            + self.hint.size_hint()
     }
 
     fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.elgamal_cipher.encode_to(dest);
-        RistrettoPointEncoder(&self.y).encode_to(dest);
-        self.z.encode_to(dest);
+        self.cipher.encode_to(dest);
+        self.hint.encode_to(dest);
     }
 }
 
 impl Decode for CipherTextWithHint {
     fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let elgamal_cipher = <CipherText>::decode(input)?;
-        let y = <RistrettoPointDecoder>::decode(input)?.0;
-        let z = <[u8; 32]>::decode(input)?;
+        let cipher = CipherText::decode(input)?;
+        let hint = CipherTextHint::decode(input)?;
 
         Ok(CipherTextWithHint {
-            elgamal_cipher,
-            y,
-            z,
+            cipher,
+            hint,
         })
+    }
+}
+
+impl CipherTextWithHint {
+    pub fn ciphertext(&self) -> &CipherText {
+        &self.cipher
     }
 }
 
@@ -112,23 +182,9 @@ impl ElgamalPublicKey {
         witness: &CommitmentWitness,
         rng: &mut R,
     ) -> CipherTextWithHint {
-        // Twisted Elgamal encryption.
-        let elgamal_cipher = self.encrypt(witness);
-        let r1 = witness.blinding();
-
-        // Constant Time Elgamal encryption.
-        let message_bytes: [u8; 32] = witness.value().to_bytes();
-        let r2 = Scalar::random(rng);
-        let gens = PedersenGens::default();
-        let r2h = r2 * gens.B;
-
-        let y = gens.commit(r2, r1); // r1 * g + r2 * h
-        let z = xor_with_one_time_pad(r2h, &message_bytes);
-
         CipherTextWithHint {
-            elgamal_cipher,
-            y,
-            z,
+            cipher: self.encrypt(witness),
+            hint: CipherTextHint::new(witness, rng),
         }
     }
 
@@ -147,16 +203,10 @@ impl ElgamalPublicKey {
 impl ElgamalSecretKey {
     /// Decrypt a cipher text that is known to encrypt a `Balance`.
     pub fn const_time_decrypt(&self, cipher_text: &CipherTextWithHint) -> Result<Balance> {
-        // random_2 * h = Y - X / secret_key
-        let random_2_h = cipher_text.y - self.secret.invert() * cipher_text.elgamal_cipher.x;
-
-        use byteorder::{ByteOrder, LittleEndian};
-
-        let decrypted_msg = xor_with_one_time_pad(random_2_h, &cipher_text.z);
-        let decrypted_value = LittleEndian::read_u64(&decrypted_msg);
+        let decrypted_value = cipher_text.hint.decrypt(self.secret.invert() * cipher_text.cipher.x);
 
         // Verify that the same value was encrypted using twisted Elgamal encryption.
-        self.verify(&cipher_text.elgamal_cipher, &decrypted_value.into())?;
+        self.verify(&cipher_text.cipher, &decrypted_value.into())?;
         Ok(decrypted_value)
     }
 }
@@ -193,7 +243,7 @@ mod tests {
         let value = 111u32;
         let (_, cipher) = elg_pub.const_time_encrypt_value(value.into(), &mut rng);
         let mut corrupt_cipher = cipher;
-        corrupt_cipher.z[0] += 1;
+        corrupt_cipher.hint.z[0] += 1;
         assert_err!(
             elg_secret.const_time_decrypt(&corrupt_cipher),
             Error::CipherTextDecryptionError
