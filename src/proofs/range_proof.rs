@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     codec_wrapper::{
-        CompressedRistrettoDecoder, CompressedRistrettoEncoder, RangeProofDencoder,
+        RangeProofDencoder,
         RangeProofEncoder,
     },
     errors::Result,
@@ -25,44 +25,26 @@ const RANGE_PROOF_LABEL: &[u8] = b"PolymeshRangeProof";
 // Range Proof
 // ------------------------------------------------------------------------
 
-pub type RangeProofInitialMessage = CompressedRistretto;
-
-pub type RangeProofFinalResponse = RangeProof;
-
 /// Holds the non-interactive range proofs, equivalent of L_range of MERCAT paper.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InRangeProof {
-    pub init: RangeProofInitialMessage,
-    pub response: RangeProofFinalResponse,
-    pub range: u32,
-}
+pub struct InRangeProof(pub RangeProof);
 
 impl Encode for InRangeProof {
     fn size_hint(&self) -> usize {
-        CompressedRistrettoEncoder(&self.init).size_hint()
-            + RangeProofEncoder(&self.response).size_hint()
-            + self.range.size_hint()
+        RangeProofEncoder(&self.0).size_hint()
     }
 
     fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        CompressedRistrettoEncoder(&self.init).encode_to(dest);
-        RangeProofEncoder(&self.response).encode_to(dest);
-        self.range.encode_to(dest);
+        RangeProofEncoder(&self.0).encode_to(dest);
     }
 }
 
 impl Decode for InRangeProof {
     fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let init = <CompressedRistrettoDecoder>::decode(input)?.0;
-        let response = <RangeProofDencoder>::decode(input)?.0;
-        let range = <u32>::decode(input)?;
+        let proof = RangeProofDencoder::decode(input)?.0;
 
-        Ok(InRangeProof {
-            init,
-            response,
-            range,
-        })
+        Ok(Self(proof))
     }
 }
 
@@ -70,73 +52,94 @@ impl InRangeProof {
     #[allow(dead_code)]
     pub fn build<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let range = 32;
-        prove_within_range(0, Scalar::one(), range, rng).expect("This shouldn't happen.")
+        Self::prove(0, Scalar::one(), range, rng).expect("This shouldn't happen.")
     }
-}
 
-/// Generate a range proof for a commitment to a secret value.
-/// Range proof commitments are equevalant to the second term (Y)
-/// of the Elgamal encryption.
-pub fn prove_within_range<Rng: RngCore + CryptoRng>(
-    secret_value: u64,
-    rand_blind: Scalar,
-    range: u32,
-    rng: &mut Rng,
-) -> Result<InRangeProof> {
-    // Generators for Pedersen commitments.
-    let pc_gens = PedersenGens::default();
+    fn gens(len: usize) -> (PedersenGens, BulletproofGens) {
+        // Generators for Pedersen commitments.
+        let pc_gens = PedersenGens::default();
 
-    // Generators for Bulletproofs, valid for proofs up to bitsize 64
-    // and aggregation size up to 1.
-    // Note that we are not supporting aggregating more than one value
-    // from a single party into an aggretated proof yet.
-    let bp_gens = BulletproofGens::new(64, 1);
+        // Generators for Bulletproofs, valid for proofs up to bitsize 64
+        // and aggregation size up to `len`.
+        let bp_gens = BulletproofGens::new(64, len);
 
-    // Transcripts eliminate the need for a dealer by employing
-    // the Fiat-Shamir huristic.
-    let mut prover_transcript = Transcript::new(RANGE_PROOF_LABEL);
+        (pc_gens, bp_gens)
+    }
 
-    let (proof, commitment) = RangeProof::prove_single_with_rng(
-        &bp_gens,
-        &pc_gens,
-        &mut prover_transcript,
-        secret_value,
-        &rand_blind,
-        range as usize,
-        rng,
-    )?;
+    /// Generate a range proof for a commitment to a secret value.
+    /// Range proof commitments are equevalant to the second term (Y)
+    /// of the Elgamal encryption.
+    pub fn prove<Rng: RngCore + CryptoRng>(
+        secret_value: u64,
+        blinding: Scalar,
+        range: u32,
+        rng: &mut Rng,
+    ) -> Result<Self> {
+        Self::prove_multiple(&[secret_value], &[blinding], range, rng)
+    }
 
-    Ok(InRangeProof {
-        init: commitment,
-        response: proof,
-        range,
-    })
-}
+    /// Verify that a range proof is valid given a commitment to a secret value.
+    pub fn verify<Rng: RngCore + CryptoRng>(
+        &self,
+        commitment: &CompressedRistretto,
+        range: u32,
+        rng: &mut Rng,
+    ) -> Result<()> {
+        self.verify_multiple(&[*commitment], range, rng)
+    }
 
-/// Verify that a range proof is valid given a commitment to a secret value.
-pub fn verify_within_range<Rng: RngCore + CryptoRng>(
-    proof: &InRangeProof,
-    rng: &mut Rng,
-) -> Result<()> {
-    // Generators for Pedersen commitments.
-    let pc_gens = PedersenGens::default();
+    /// Generate a range proof for multiple secret values.
+    /// Range proof commitments are equevalant to the second term (Y)
+    /// of the Elgamal encryption.
+    pub fn prove_multiple<Rng: RngCore + CryptoRng>(
+        values: &[u64],
+        blindings: &[Scalar],
+        range: u32,
+        rng: &mut Rng,
+    ) -> Result<Self> {
+        // Get generators.
+        let (pc_gens, bp_gens) = Self::gens(values.len());
 
-    // Generators for Bulletproofs, valid for proofs up to bitsize 64
-    // and aggregation size up to 1.
-    let bp_gens = BulletproofGens::new(64, 1);
+        // Transcripts eliminate the need for a dealer by employing
+        // the Fiat-Shamir huristic.
+        let mut prover_transcript = Transcript::new(RANGE_PROOF_LABEL);
 
-    // Transcripts eliminate the need for a dealer by employing
-    // the Fiat-Shamir huristic.
-    let mut verifier_transcript = Transcript::new(RANGE_PROOF_LABEL);
+        let (proof, _commitments) = RangeProof::prove_multiple_with_rng(
+            &bp_gens,
+            &pc_gens,
+            &mut prover_transcript,
+            values,
+            blindings,
+            range as usize,
+            rng,
+        )?;
 
-    Ok(proof.response.verify_single_with_rng(
-        &bp_gens,
-        &pc_gens,
-        &mut verifier_transcript,
-        &proof.init,
-        proof.range as usize,
-        rng,
-    )?)
+        Ok(Self(proof))
+    }
+
+    /// Verify that a range proof is valid given multiple commitments to secret values.
+    pub fn verify_multiple<Rng: RngCore + CryptoRng>(
+        &self,
+        commitments: &[CompressedRistretto],
+        range: u32,
+        rng: &mut Rng,
+    ) -> Result<()> {
+        // Get generators.
+        let (pc_gens, bp_gens) = Self::gens(commitments.len());
+
+        // Transcripts eliminate the need for a dealer by employing
+        // the Fiat-Shamir huristic.
+        let mut verifier_transcript = Transcript::new(RANGE_PROOF_LABEL);
+
+        Ok(self.0.verify_multiple_with_rng(
+            &bp_gens,
+            &pc_gens,
+            &mut verifier_transcript,
+            commitments,
+            range as usize,
+            rng,
+        )?)
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -158,24 +161,54 @@ mod tests {
     fn basic_range_proof() {
         let mut rng = StdRng::from_seed(SEED_1);
         let secret_value = 42u32;
+        let range = 32;
 
         let elg_secret = ElgamalSecretKey::new(Scalar::random(&mut rng));
         let elg_pub = elg_secret.get_public_key();
         let (witness, cipher) = elg_pub.encrypt_value(secret_value.into(), &mut rng);
 
         // Positive test: secret value within range [0, 2^32)
-        let proof = prove_within_range(secret_value as u64, witness.blinding(), 32, &mut rng)
+        let proof = InRangeProof::prove(secret_value as u64, witness.blinding(), range, &mut rng)
             .expect("This shouldn't happen.");
-        assert_eq!(proof.range, 32);
-        assert!(verify_within_range(&proof, &mut rng).is_ok());
-
-        // Make sure the second part of the elgamal encryption is the same as the commited value in the range proof.
-        assert_eq!(proof.init, cipher.y.compress());
+        assert!(proof.verify(&cipher.y.compress(), range, &mut rng).is_ok());
 
         // Negative test: secret value outside the allowed range
         let large_secret_value: u64 = u64::from(u32::max_value()) + 3;
+        let (bad_witness, bad_cipher) = elg_pub.encrypt_value(large_secret_value.into(), &mut rng);
         let bad_proof =
-            prove_within_range(large_secret_value, witness.blinding(), 32, &mut rng).unwrap();
-        assert!(!verify_within_range(&bad_proof, &mut rng).is_ok());
+            InRangeProof::prove(large_secret_value, bad_witness.blinding(), range, &mut rng).unwrap();
+        assert!(!bad_proof.verify(&bad_cipher.y.compress(), range, &mut rng).is_ok());
+    }
+
+    #[test]
+    #[wasm_bindgen_test]
+    fn basic_two_range_proof() {
+        let mut rng = StdRng::from_seed(SEED_1);
+        let secret_value1 = 42u64;
+        let secret_value2 = 1234u64;
+        let range = 32;
+
+        let elg_secret = ElgamalSecretKey::new(Scalar::random(&mut rng));
+        let elg_pub = elg_secret.get_public_key();
+        let (witness1, cipher1) = elg_pub.encrypt_value(secret_value1.into(), &mut rng);
+        let (witness2, cipher2) = elg_pub.encrypt_value(secret_value2.into(), &mut rng);
+
+        // Positive test: secret values within range [0, 2^32)
+        let proof = InRangeProof::prove_multiple(&[secret_value1, secret_value2], &[witness1.blinding(), witness2.blinding()], range, &mut rng)
+            .expect("This shouldn't happen.");
+        assert!(proof.verify_multiple(&[
+            cipher1.y.compress(),
+            cipher2.y.compress()
+        ], range, &mut rng).is_ok());
+
+        // Negative test: secret value outside the allowed range
+        let large_secret_value: u64 = u64::from(u32::max_value()) + 3;
+        let (bad_witness, bad_cipher) = elg_pub.encrypt_value(large_secret_value.into(), &mut rng);
+        let bad_proof = InRangeProof::prove_multiple(&[large_secret_value, secret_value2], &[bad_witness.blinding(), witness2.blinding()], range, &mut rng)
+            .expect("This shouldn't happen.");
+        assert!(!bad_proof.verify_multiple(&[
+            bad_cipher.y.compress(),
+            cipher2.y.compress()
+        ], range, &mut rng).is_ok());
     }
 }

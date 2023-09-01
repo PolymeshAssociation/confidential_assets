@@ -13,7 +13,7 @@ use confidential_assets::{
             CipherEqualDifferentPubKeyProof, EncryptingSameValueProverAwaitingChallenge,
         },
         encryption_proofs::single_property_prover,
-        range_proof::{prove_within_range, InRangeProof},
+        range_proof::InRangeProof,
     },
     transaction::{
         verify_amount_correctness, verify_initialized_transaction, CtxMediator, CtxReceiver,
@@ -23,6 +23,7 @@ use confidential_assets::{
     EncryptedAmountWithHint, ConfidentialTransferProof, Scalar,
     TransferTransactionMediator, TransferTransactionReceiver, TransferTransactionSender,
     TransferTransactionVerifier, BALANCE_RANGE,
+    TransferTxMemo,
 };
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
@@ -105,6 +106,25 @@ impl SenderProofGen {
         }
     }
 
+    pub fn finalize<T: RngCore + CryptoRng>(mut self, rng: &mut T) -> Result<ConfidentialTransferProof> {
+        self.run_to_stage(u32::MAX, rng)?;
+
+        Ok(ConfidentialTransferProof {
+            amount_equal_cipher_proof: self.amount_equal_cipher_proof.unwrap(),
+            non_neg_amount_proof: self.non_neg_amount_proof.unwrap(),
+            enough_fund_proof: self.enough_fund_proof.unwrap(),
+            balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
+            amount_correctness_proof: self.amount_correctness_proof.unwrap(),
+            memo: TransferTxMemo {
+                enc_amount_using_sender: self.enc_amount_using_sender.unwrap(),
+                enc_amount_using_receiver: self.enc_amount_using_receiver.unwrap(),
+                refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
+                enc_amount_for_mediator: self.enc_amount_for_mediator,
+            },
+            auditors_payload: vec![],
+        })
+    }
+
     fn run_to_stage<T: RngCore + CryptoRng>(&mut self, to_stage: u32, rng: &mut T) -> Result<()> {
         while self.last_stage < to_stage {
             self.run_next_stage(rng)?;
@@ -123,7 +143,7 @@ impl SenderProofGen {
             1 => {
                 // Prove that the amount is not negative.
                 let amount_enc_blinding = self.witness.blinding();
-                self.non_neg_amount_proof = Some(prove_within_range(
+                self.non_neg_amount_proof = Some(InRangeProof::prove(
                     self.amount.into(),
                     amount_enc_blinding,
                     BALANCE_RANGE,
@@ -173,7 +193,7 @@ impl SenderProofGen {
                 // Prove that the sender has enough funds.
                 let amount_enc_blinding = self.witness.blinding();
                 let blinding = self.balance_refresh_enc_blinding - amount_enc_blinding;
-                self.enough_fund_proof = Some(prove_within_range(
+                self.enough_fund_proof = Some(InRangeProof::prove(
                     (self.sender_balance - self.amount).into(),
                     blinding,
                     BALANCE_RANGE,
@@ -202,6 +222,7 @@ impl SenderProofGen {
                 )?);
             }
             _ => {
+                self.last_stage = u32::MAX;
                 return Ok(());
             }
         }
@@ -244,13 +265,13 @@ fn bench_transaction_sender_proof_stage(
         .collect();
 
     let mut group = c.benchmark_group("MERCAT Transaction");
-    for proof_gen in proof_gens {
+    for proof_gen in &proof_gens {
         group.bench_with_input(
             BenchmarkId::new(
                 format!("Sender Proof Stage {bench_stage}"),
                 proof_gen.amount,
             ),
-            &proof_gen,
+            proof_gen,
             |b, proof_gen: &SenderProofGen| {
                 b.iter(|| {
                     let mut gen = proof_gen.clone();
@@ -261,6 +282,22 @@ fn bench_transaction_sender_proof_stage(
         );
     }
     group.finish();
+
+    for proof_gen in proof_gens {
+        let sender_account = proof_gen.sender_pub;
+        let amount = proof_gen.amount;
+        let sender_init_balance = proof_gen.sender_init_balance;
+        let receiver_account = proof_gen.receiver_pub;
+        let tx = proof_gen.finalize(&mut rng).expect("Ok");
+        verify_initialized_transaction(
+            &tx,
+            &sender_account,
+            &sender_init_balance,
+            &receiver_account,
+            &[],
+            &mut rng,
+        ).expect(&format!("Verify Sender proof of amount {amount:?}"));
+    }
 }
 
 fn bench_transaction_sender(

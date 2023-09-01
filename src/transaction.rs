@@ -12,7 +12,7 @@ use crate::{
         },
         encryption_proofs::single_property_prover,
         encryption_proofs::single_property_verifier,
-        range_proof::{prove_within_range, verify_within_range},
+        range_proof::InRangeProof,
     },
     AmountSource, AuditorId, AuditorPayload, Balance, ElgamalKeys, ElgamalPublicKey,
     EncryptedAmount, ConfidentialTransferProof, Scalar,
@@ -62,7 +62,7 @@ impl TransferTransactionSender for CtxSender {
         let amount_enc_blinding = witness.blinding();
 
         let non_neg_amount_proof =
-            prove_within_range(amount.into(), amount_enc_blinding, BALANCE_RANGE, rng)?;
+            InRangeProof::prove(amount.into(), amount_enc_blinding, BALANCE_RANGE, rng)?;
 
         // Prove that the amount encrypted under different public keys are the same.
         let (sender_new_enc_amount, receiver_new_enc_amount) =
@@ -99,7 +99,7 @@ impl TransferTransactionSender for CtxSender {
 
         // Prove that the sender has enough funds.
         let blinding = balance_refresh_enc_blinding - amount_enc_blinding;
-        let enough_fund_proof = prove_within_range(
+        let enough_fund_proof = InRangeProof::prove(
             (sender_balance - amount).into(),
             blinding,
             BALANCE_RANGE,
@@ -327,7 +327,8 @@ fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
     )?;
 
     // Verify that the amount is not negative.
-    verify_within_range(&init_data.non_neg_amount_proof, rng)?;
+    let commitment = init_data.memo.enc_amount_using_sender.y.compress();
+    init_data.non_neg_amount_proof.verify(&commitment, BALANCE_RANGE, rng)?;
 
     // verify that the balance refreshment was done correctly.
     single_property_verifier(
@@ -341,7 +342,9 @@ fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
     )?;
 
     // Verify that the balance has enough fund.
-    verify_within_range(&init_data.enough_fund_proof, rng)?;
+    let updated_balance = init_data.memo.refreshed_enc_balance - init_data.memo.enc_amount_using_sender;
+    let commitment = updated_balance.y.compress();
+    init_data.enough_fund_proof.verify(&commitment, BALANCE_RANGE, rng)?;
 
     // Verify that all auditors' payload is included, and
     // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.

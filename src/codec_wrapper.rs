@@ -220,8 +220,8 @@ mod test {
     fn range_proof_codec() -> Result<(), CodecError> {
         let mut rng = thread_rng();
 
-        let proof_1 = InRangeProof::build(&mut rng).response;
-        let proof_2 = InRangeProof::build(&mut rng).response;
+        let proof_1 = InRangeProof::build(&mut rng).0;
+        let proof_2 = InRangeProof::build(&mut rng).0;
 
         assert!(proof_1.to_bytes() != proof_2.to_bytes());
 
