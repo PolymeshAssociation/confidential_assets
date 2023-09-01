@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use confidential_assets::{
-    elgamal::{CommitmentWitness, CipherText, CipherTextWithHint},
+    elgamal::{CommitmentWitness, CipherText, CipherTextHint},
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
     errors::Result,
     proofs::{
@@ -9,7 +9,6 @@ use confidential_assets::{
         ciphertext_refreshment_proof::{
             CipherEqualSamePubKeyProof, CipherTextRefreshmentProverAwaitingChallenge,
         },
-        correctness_proof::{CorrectnessProof, CorrectnessProverAwaitingChallenge},
         ciphertext_same_value_proof::{
             CipherTextSameValueProof,
             CipherTextSameValueProverAwaitingChallenge,
@@ -18,7 +17,7 @@ use confidential_assets::{
         range_proof::InRangeProof,
     },
     transaction::{
-        AmountSource, ConfidentialTransferProof,
+        AuditorId, AuditorPayload, ConfidentialTransferProof,
     },
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey,
     Scalar,
@@ -26,10 +25,9 @@ use confidential_assets::{
 };
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
+use std::collections::BTreeMap;
 
-mod correctness_proof;
 mod utility;
-use correctness_proof::brute_force_amount_correctness;
 
 // The sender's initial balance. Will be in:
 // [10^MIN_SENDER_BALANCE_ORDER, 10^(MIN_SENDER_BALANCE_ORDER+1), ..., 10^MAX_SENDER_BALANCE_ORDER]
@@ -47,7 +45,8 @@ struct SenderProofGen {
     sender_init_balance: CipherText,
     sender_balance: Balance,
     receiver_pub: ElgamalPublicKey,
-    mediator_pub: ElgamalPublicKey,
+    auditor_keys: BTreeMap<AuditorId, ElgamalPublicKey>,
+    keys: Vec<ElgamalPublicKey>,
     pub amount: Balance,
     // Temps.
     last_stage: u32,
@@ -60,9 +59,8 @@ struct SenderProofGen {
     non_neg_amount_proof: Option<InRangeProof>,
     enough_fund_proof: Option<InRangeProof>,
     refreshed_enc_balance: Option<CipherText>,
-    enc_amount_for_mediator: Option<CipherTextWithHint>,
     balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
-    amount_correctness_proof: Option<CorrectnessProof>,
+    auditors: BTreeMap<AuditorId, AuditorPayload>,
 }
 
 impl SenderProofGen {
@@ -75,6 +73,7 @@ impl SenderProofGen {
         amount: Balance,
         rng: &mut T,
     ) -> Self {
+        let keys = vec![sender_account.public, *receiver_pub_account, *mediator_pub_key];
         Self {
             // Inputs.
             sender_sec: sender_account.secret.clone(),
@@ -82,7 +81,8 @@ impl SenderProofGen {
             sender_init_balance: sender_init_balance.clone(),
             sender_balance,
             receiver_pub: receiver_pub_account.clone(),
-            mediator_pub: mediator_pub_key.clone(),
+            auditor_keys: BTreeMap::from([(AuditorId(0), *mediator_pub_key)]),
+            keys,
             amount,
 
             // Temps.
@@ -97,9 +97,8 @@ impl SenderProofGen {
             non_neg_amount_proof: None,
             enough_fund_proof: None,
             refreshed_enc_balance: None,
-            enc_amount_for_mediator: None,
             balance_refreshed_same_proof: None,
-            amount_correctness_proof: None,
+            auditors: Default::default(),
         }
     }
 
@@ -112,10 +111,8 @@ impl SenderProofGen {
             non_neg_amount_proof: self.non_neg_amount_proof.unwrap(),
             enough_fund_proof: self.enough_fund_proof.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
-            amount_correctness_proof: self.amount_correctness_proof.unwrap(),
             refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
-            enc_amount_for_mediator: self.enc_amount_for_mediator,
-            auditors: Default::default(),
+            auditors: self.auditors,
         })
     }
 
@@ -146,13 +143,12 @@ impl SenderProofGen {
             }
             2 => {
                 // Prove that the amount encrypted under different public keys are the same.
-                let keys = vec![self.sender_pub, self.receiver_pub];
-                self.amounts = Some(CipherTextMultiKeyBuilder::new(&self.witness, keys.iter()).build());
+                self.amounts = Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
             3 => {
                 self.amount_equal_cipher_proof = Some(single_property_prover(
                     CipherTextSameValueProverAwaitingChallenge {
-                        keys: vec![self.sender_pub, self.receiver_pub],
+                        keys: self.keys.clone(),
                         w: self.witness.clone(),
                         pc_gens: &self.gens,
                     },
@@ -192,25 +188,17 @@ impl SenderProofGen {
                 )?);
             }
             7 => {
-                let amount_witness_blinding_for_mediator = Scalar::random(rng);
-                let amount_witness_for_mediator = CommitmentWitness::new(
-                    self.amount.into(),
-                    amount_witness_blinding_for_mediator,
-                );
-                self.enc_amount_for_mediator = Some(
-                    self.mediator_pub
-                        .const_time_encrypt(&amount_witness_for_mediator, rng),
-                );
-            }
-            8 => {
-                self.amount_correctness_proof = Some(single_property_prover(
-                    CorrectnessProverAwaitingChallenge {
-                        pub_key: self.sender_pub,
-                        w: self.witness.clone(),
-                        pc_gens: &self.gens,
-                    },
-                    rng,
-                )?);
+                // Add the necessary payload for auditors.
+                self.auditors = self.auditor_keys
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
+                        (*auditor_id, AuditorPayload {
+                            amount_idx: (idx + 2) as u8,
+                            encrypted_hint: CipherTextHint::new(&self.witness, rng),
+                        })
+                    })
+                    .collect();
             }
             _ => {
                 self.last_stage = u32::MAX;
@@ -279,12 +267,13 @@ fn bench_transaction_sender_proof_stage(
         let amount = proof_gen.amount;
         let sender_init_balance = proof_gen.sender_init_balance;
         let receiver_account = proof_gen.receiver_pub;
+        let auditor_keys = proof_gen.auditor_keys.clone();
         let tx = proof_gen.finalize(&mut rng).expect("Ok");
         tx.verify(
             &sender_account,
             &sender_init_balance,
             &receiver_account,
-            &Default::default(),
+            &auditor_keys,
             &mut rng,
         ).expect(&format!("Verify Sender proof of amount {amount:?}"));
     }
@@ -296,9 +285,10 @@ fn bench_transaction_sender(
     sender_balances: Vec<(Balance, CipherText)>,
     rcvr_pub_account: ElgamalPublicKey,
     mediator_pub_key: ElgamalPublicKey,
-) -> Vec<(Balance, CipherText, ConfidentialTransferProof)> {
+) -> (BTreeMap<AuditorId, ElgamalPublicKey>, Vec<(Balance, CipherText, ConfidentialTransferProof)>) {
     let mut rng = thread_rng();
 
+    let auditor_keys = BTreeMap::from([(AuditorId(0), mediator_pub_key)]);
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, sender_balance) in &sender_balances {
         group.bench_with_input(
@@ -311,8 +301,7 @@ fn bench_transaction_sender(
                             sender_balance,
                             amount,
                             &rcvr_pub_account,
-                            Some(&mediator_pub_key.clone()),
-                            &Default::default(),
+                            &auditor_keys,
                             amount,
                             &mut rng,
                         )
@@ -323,7 +312,7 @@ fn bench_transaction_sender(
     }
     group.finish();
 
-    sender_balances
+    let transactions = sender_balances
         .into_iter()
         .map(|(amount, sender_balance)| {
             eprintln!("Generate Sender Proof for: {amount}");
@@ -333,8 +322,7 @@ fn bench_transaction_sender(
                     &sender_balance,
                     amount,
                     &rcvr_pub_account,
-                    Some(&mediator_pub_key),
-                    &Default::default(),
+                    &auditor_keys,
                     amount,
                     &mut rng,
                 )
@@ -342,13 +330,15 @@ fn bench_transaction_sender(
             eprintln!("elapsed: {:.0?} ms", now.elapsed().as_secs_f32() * 1_000.0);
             (amount, sender_balance, tx)
         })
-        .collect()
+        .collect();
+    (auditor_keys, transactions)
 }
 
 fn bench_transaction_verify_sender_proof(
     c: &mut Criterion,
     sender_account: ElgamalPublicKey,
     receiver_account: ElgamalPublicKey,
+    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
     let mut rng = thread_rng();
@@ -363,7 +353,7 @@ fn bench_transaction_verify_sender_proof(
                         &sender_account,
                         &sender_balance,
                         &receiver_account,
-                        &Default::default(),
+                        auditor_keys,
                         &mut rng,
                     )
                     .unwrap()
@@ -407,7 +397,6 @@ fn bench_transaction_receiver(
 fn bench_transaction_mediator(
     c: &mut Criterion,
     mediator_account: ElgamalKeys,
-    sender_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
@@ -418,9 +407,9 @@ fn bench_transaction_mediator(
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx.mediator_verify(
-                            AmountSource::Encrypted(&mediator_account),
-                            &sender_pub_account,
+                    init_tx.auditor_verify(
+                            AuditorId(0),
+                            &mediator_account,
                         )
                         .unwrap();
                 })
@@ -434,6 +423,7 @@ fn bench_transaction_validator(
     c: &mut Criterion,
     sender_pub_account: ElgamalPublicKey,
     receiver_pub_account: ElgamalPublicKey,
+    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
     transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
 ) {
     let mut rng = thread_rng();
@@ -450,51 +440,10 @@ fn bench_transaction_validator(
                             &sender_pub_account,
                             sender_balance,
                             &receiver_pub_account,
-                            &Default::default(),
+                            auditor_keys,
                             &mut rng,
                         )
                         .unwrap();
-                })
-            },
-        );
-    }
-    group.finish();
-}
-
-fn bench_transaction_amount_correctness(
-    c: &mut Criterion,
-    sender_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
-) {
-    let mut group = c.benchmark_group("MERCAT Transaction");
-    for (amount, _sender_balance, init_tx) in &transactions {
-        let label = format!("initial_balance ({:?})", amount);
-        group.bench_with_input(
-            BenchmarkId::new("AmountCorrectness", label),
-            init_tx,
-            |b, init_tx| {
-                b.iter(|| init_tx.verify_amount_correctness(*amount, &sender_pub_account).unwrap())
-            },
-        );
-    }
-    group.finish();
-}
-
-fn bench_transaction_brute_force_amount_correctness(
-    c: &mut Criterion,
-    sender_pub_account: ElgamalPublicKey,
-    transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
-) {
-    let mut group = c.benchmark_group("MERCAT Attack");
-    for (amount, _sender_balance, init_tx) in &transactions {
-        let label = format!("amount ({amount:?})");
-        group.bench_with_input(
-            BenchmarkId::new("AmountCorrectness", label),
-            init_tx,
-            |b, init_tx| {
-                b.iter(|| {
-                    let res = brute_force_amount_correctness(init_tx, &sender_pub_account);
-                    assert_eq!(res, Some(*amount));
                 })
             },
         );
@@ -550,7 +499,7 @@ fn bench_transaction(c: &mut Criterion) {
         .collect();
 
     // Initialization
-    let transactions = bench_transaction_sender(
+    let (auditor_keys, transactions) = bench_transaction_sender(
         c,
         sender_account,
         sender_balances,
@@ -564,6 +513,7 @@ fn bench_transaction(c: &mut Criterion) {
         c,
         sender_pub_account.clone(),
         receiver_account.public.clone(),
+        &auditor_keys,
         &transactions,
     );
 
@@ -575,21 +525,6 @@ fn bench_transaction(c: &mut Criterion) {
     bench_transaction_mediator(
         c,
         private_account,
-        sender_pub_account.clone(),
-        finalized_transactions.clone(),
-    );
-
-    // Amount correctness proof.
-    bench_transaction_amount_correctness(
-        c,
-        sender_pub_account.clone(),
-        finalized_transactions.clone(),
-    );
-
-    // Attack Amount correctness proof.
-    bench_transaction_brute_force_amount_correctness(
-        c,
-        sender_pub_account.clone(),
         finalized_transactions.clone(),
     );
 
@@ -598,6 +533,7 @@ fn bench_transaction(c: &mut Criterion) {
         c,
         sender_pub_account,
         receiver_account.public,
+        &auditor_keys,
         finalized_transactions,
     );
 }

@@ -1,7 +1,7 @@
 use crate::{
     elgamal::{
         multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-        CipherText, CipherTextHint, CipherTextWithHint, CommitmentWitness,
+        CipherText, CipherTextHint, CommitmentWitness,
         ElgamalPublicKey,
     },
     errors::{Error, Result},
@@ -11,7 +11,6 @@ use crate::{
             CipherTextRefreshmentProverAwaitingChallenge, CipherTextRefreshmentVerifier,
             CipherEqualSamePubKeyProof,
         },
-        correctness_proof::{CorrectnessProof, CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
         ciphertext_same_value_proof::{
             CipherTextSameValueProof,
             CipherTextSameValueProverAwaitingChallenge, CipherTextSameValueVerifier,
@@ -46,30 +45,6 @@ pub const MAX_AUDITORS: usize = 10;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct AuditorId(#[codec(compact)] pub u32);
 
-#[derive(Clone, Debug)]
-pub enum AmountSource<'a> {
-    Encrypted(&'a ElgamalKeys),
-    Amount(Balance),
-}
-
-impl From<Balance> for AmountSource<'_> {
-    fn from(val: Balance) -> Self {
-        Self::Amount(val)
-    }
-}
-
-impl AmountSource<'_> {
-    pub fn get_amount(&self, enc_amount: Option<&CipherTextWithHint>) -> Result<Balance> {
-        match (self, enc_amount) {
-            (Self::Amount(amount), _) => Ok(*amount),
-            (Self::Encrypted(keys), Some(enc_amount)) => {
-                Ok(keys.secret.const_time_decrypt(enc_amount)?)
-            }
-            _ => Err(Error::CipherTextDecryptionError.into()),
-        }
-    }
-}
-
 #[derive(Clone, Encode, Decode, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct AuditorPayload {
@@ -86,10 +61,8 @@ pub struct ConfidentialTransferProof {
     pub non_neg_amount_proof: InRangeProof,
     pub enough_fund_proof: InRangeProof,
     pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
-    pub amount_correctness_proof: CorrectnessProof,
     pub auditors: BTreeMap<AuditorId, AuditorPayload>,
     pub refreshed_enc_balance: CipherText,
-    pub enc_amount_for_mediator: Option<CipherTextWithHint>,
 }
 
 impl ConfidentialTransferProof {
@@ -116,7 +89,6 @@ impl ConfidentialTransferProof {
         sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_key: &ElgamalPublicKey,
-        mediator_pub_key: Option<&ElgamalPublicKey>,
         auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
@@ -185,24 +157,6 @@ impl ConfidentialTransferProof {
             rng,
         )?;
 
-        let enc_amount_for_mediator = if let Some(mediator_pub_key) = mediator_pub_key {
-            let amount_witness_blinding_for_mediator = Scalar::random(rng);
-            let amount_witness_for_mediator =
-                CommitmentWitness::new(amount.into(), amount_witness_blinding_for_mediator);
-            Some(mediator_pub_key.const_time_encrypt(&amount_witness_for_mediator, rng))
-        } else {
-            None
-        };
-
-        let amount_correctness_proof = single_property_prover(
-            CorrectnessProverAwaitingChallenge {
-                pub_key: sender_account.public,
-                w: witness.clone(),
-                pc_gens: &gens,
-            },
-            rng,
-        )?;
-
         // Add the necessary payload for auditors.
         let auditors = auditors_enc_pub_keys
             .iter()
@@ -221,9 +175,7 @@ impl ConfidentialTransferProof {
             non_neg_amount_proof,
             enough_fund_proof,
             balance_refreshed_same_proof,
-            amount_correctness_proof,
             refreshed_enc_balance,
-            enc_amount_for_mediator,
             auditors,
         })
     }
@@ -297,26 +249,14 @@ impl ConfidentialTransferProof {
         Ok(())
     }
 
-    /// Receiver verify the transaction amount using their private key.
-    pub fn mediator_verify(
-        &self,
-        amount_source: AmountSource,
-        sender_account: &ElgamalPublicKey,
-    ) -> Result<()> {
-        // Verify that the encrypted amount is correct.
-        let amount = amount_source.get_amount(self.enc_amount_for_mediator.as_ref())?;
-        self.verify_amount_correctness(amount, sender_account)?;
-
-        Ok(())
-    }
-
     /// Verify the initialized transaction.
     /// Audit the sender's encrypted amount.
     pub fn auditor_verify(
         &self,
-        (auditor_id, auditor_enc_key): &(AuditorId, ElgamalKeys),
+        auditor_id: AuditorId,
+        auditor_enc_key: &ElgamalKeys,
     ) -> Result<Balance> {
-        match self.auditors.get(auditor_id) {
+        match self.auditors.get(&auditor_id) {
             Some(auditor) => {
                 let enc_amount = auditor.encrypted_hint.
                     ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
@@ -328,27 +268,6 @@ impl ConfidentialTransferProof {
                 Err(Error::AuditorPayloadError)
             }
         }
-    }
-
-    pub fn verify_amount_correctness(
-        &self,
-        amount: Balance,
-        sender_account: &ElgamalPublicKey,
-    ) -> Result<()> {
-        let gens = &PedersenGens::default();
-    
-        // Verify that the encrypted amount is correct.
-        single_property_verifier(
-            &CorrectnessVerifier {
-                value: amount.into(),
-                pub_key: *sender_account,
-                cipher: self.sender_amount(),
-                pc_gens: &gens,
-            },
-            &self.amount_correctness_proof,
-        )?;
-    
-        Ok(())
     }
 
     pub fn amount(&self, idx: usize) -> CipherText {
@@ -434,8 +353,7 @@ mod tests {
             &sender_init_balance,
             sender_balance,
             &receiver_account.public,
-            Some(&mediator_account.public),
-            &BTreeMap::new(),
+            &BTreeMap::from([(AuditorId(0), mediator_account.public)]),
             amount,
             &mut rng,
         );
@@ -446,10 +364,8 @@ mod tests {
             .unwrap();
 
         // Justify the transaction
-        let _result = ctx_init_data.mediator_verify(
-                AmountSource::Encrypted(&mediator_account),
-                &sender_account.public,
-            )
+        let _result = ctx_init_data
+            .auditor_verify(AuditorId(0), &mediator_account)
             .unwrap();
 
         assert!(ctx_init_data.verify(
@@ -505,9 +421,9 @@ mod tests {
         validator_check_fails: bool,
         auditors_list: &[(AuditorId, ElgamalKeys)],
     ) {
-        let sender_auditor_list = BTreeMap::from_iter(sender_auditor_list.iter().copied());
-        let mediator_auditor_list = BTreeMap::from_iter(mediator_auditor_list.iter().copied());
-        let validator_auditor_list = BTreeMap::from_iter(validator_auditor_list.iter().copied());
+        let mut sender_auditor_list = BTreeMap::from_iter(sender_auditor_list.iter().copied());
+        let mut mediator_auditor_list = BTreeMap::from_iter(mediator_auditor_list.iter().copied());
+        let mut validator_auditor_list = BTreeMap::from_iter(validator_auditor_list.iter().copied());
         let sender_balance = 500;
         let receiver_balance = 0;
         let amount = 400;
@@ -515,6 +431,10 @@ mod tests {
         let mut rng = StdRng::from_seed([19u8; 32]);
 
         let mediator_enc_keys = mock_gen_enc_key_pair(140u8);
+        let mediator_id = AuditorId(140);
+        sender_auditor_list.insert(mediator_id, mediator_enc_keys.public);
+        mediator_auditor_list.insert(mediator_id, mediator_enc_keys.public);
+        validator_auditor_list.insert(mediator_id, mediator_enc_keys.public);
 
         let (receiver_account, receiver_init_balance) =
             account_create_helper([18u8; 32], 120u8, receiver_balance);
@@ -528,7 +448,6 @@ mod tests {
                 &sender_init_balance,
                 sender_balance,
                 &receiver_account.public,
-                Some(&mediator_enc_keys.public),
                 &sender_auditor_list,
                 amount,
                 &mut rng,
@@ -540,9 +459,9 @@ mod tests {
             .unwrap();
 
         // Justify the transaction
-        ctx_init.mediator_verify(
-            AmountSource::Encrypted(&mediator_enc_keys),
-            &sender_account.public,
+        ctx_init.auditor_verify(
+            mediator_id,
+            &mediator_enc_keys
         ).unwrap();
 
         if mediator_check_fails {
@@ -595,7 +514,8 @@ mod tests {
         for auditor in auditors_list {
             assert!(ctx_init
                 .auditor_verify(
-                    auditor,
+                    auditor.0,
+                    &auditor.1,
                 )
                 .is_ok());
         }
