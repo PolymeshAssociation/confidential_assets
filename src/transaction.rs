@@ -347,13 +347,14 @@ mod tests {
         let sender_init_balance =
             mock_gen_account(sender_account.public, sender_balance, &mut rng).unwrap();
 
+        let auditor_keys = BTreeMap::from([(AuditorId(0), mediator_account.public)]);
         // Create the transaction and check its result and state
         let result = ConfidentialTransferProof::new(
             &sender_account,
             &sender_init_balance,
             sender_balance,
             &receiver_account.public,
-            &BTreeMap::from([(AuditorId(0), mediator_account.public)]),
+            &auditor_keys,
             amount,
             &mut rng,
         );
@@ -372,7 +373,7 @@ mod tests {
                 &sender_account.public,
                 &sender_init_balance,
                 &receiver_account.public,
-                &BTreeMap::new(),
+                &auditor_keys,
                 &mut rng,
             )
             .is_ok());
