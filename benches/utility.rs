@@ -1,5 +1,5 @@
 use confidential_assets::{
-    elgamal::ElgamalSecretKey, Balance, ElgamalKeys, ElgamalPublicKey, EncryptedAmount, Scalar,
+    elgamal::ElgamalSecretKey, Balance, ElgamalKeys, ElgamalPublicKey, CipherText, Scalar,
 };
 use rand::{CryptoRng, RngCore};
 
@@ -11,9 +11,9 @@ pub mod balance_range {
 pub fn issue_assets<R: RngCore + CryptoRng>(
     rng: &mut R,
     pub_account: &ElgamalPublicKey,
-    init_balance: &EncryptedAmount,
+    init_balance: &CipherText,
     amount: Balance,
-) -> EncryptedAmount {
+) -> CipherText {
     let (_, encrypted_amount) = pub_account.encrypt_value(amount.into(), rng);
     init_balance + encrypted_amount
 }
@@ -34,7 +34,7 @@ pub fn generate_mediator_keys<R: RngCore + CryptoRng>(
 pub fn create_account_with_amount<R: RngCore + CryptoRng>(
     rng: &mut R,
     initial_amount: Balance,
-) -> (ElgamalKeys, EncryptedAmount) {
+) -> (ElgamalKeys, CipherText) {
     let account = gen_keys(rng);
 
     let (_, initial_balance) = account.public.encrypt_value(0u32.into(), rng);

@@ -1,49 +1,115 @@
 use crate::{
-    elgamal::{encrypt_using_two_pub_keys, CommitmentWitness},
+    elgamal::{
+        CipherText, CipherTextWithHint, CommitmentWitness,
+        ElgamalPublicKey,
+        encrypt_using_two_pub_keys,
+    },
     errors::{Error, Result},
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
             CipherTextRefreshmentProverAwaitingChallenge, CipherTextRefreshmentVerifier,
+            CipherEqualSamePubKeyProof,
         },
-        correctness_proof::{CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
+        correctness_proof::{CorrectnessProof, CorrectnessProverAwaitingChallenge, CorrectnessVerifier},
         encrypting_same_value_proof::{
+            CipherEqualDifferentPubKeyProof,
             EncryptingSameValueProverAwaitingChallenge, EncryptingSameValueVerifier,
         },
         encryption_proofs::single_property_prover,
         encryption_proofs::single_property_verifier,
         range_proof::InRangeProof,
     },
-    AmountSource, AuditorId, AuditorPayload, Balance, ElgamalKeys, ElgamalPublicKey,
-    EncryptedAmount, ConfidentialTransferProof, Scalar,
-    TransferTransactionAuditor, TransferTransactionMediator, TransferTransactionReceiver,
-    TransferTransactionSender, TransferTransactionVerifier, TransferTxMemo, BALANCE_RANGE,
+    ElgamalKeys,
+    Balance,
+    Scalar,
+    BALANCE_RANGE,
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use rand_core::{CryptoRng, RngCore};
-use sp_std::vec::Vec;
+
+use codec::{Decode, Encode};
+use sp_std::{
+  collections::btree_map::BTreeMap,
+};
 
 // -------------------------------------------------------------------------------------
-// -                                    Sender                                         -
+// -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
-/// The sender of a confidential transaction. Sender creates a transaction
-/// and performs initial proofs.
+#[derive(Copy, Clone, Debug, Encode, Decode, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct AuditorId(#[codec(compact)] pub u32);
+
 #[derive(Clone, Debug)]
-pub struct CtxSender;
+pub enum AmountSource<'a> {
+    Encrypted(&'a ElgamalKeys),
+    Amount(Balance),
+}
 
-impl TransferTransactionSender for CtxSender {
-    fn create_transaction<T: RngCore + CryptoRng>(
-        &self,
+impl From<Balance> for AmountSource<'_> {
+    fn from(val: Balance) -> Self {
+        Self::Amount(val)
+    }
+}
+
+impl AmountSource<'_> {
+    pub fn get_amount(&self, enc_amount: Option<&CipherTextWithHint>) -> Result<Balance> {
+        match (self, enc_amount) {
+            (Self::Amount(amount), _) => Ok(*amount),
+            (Self::Encrypted(keys), Some(enc_amount)) => {
+                Ok(keys.secret.const_time_decrypt(enc_amount)?)
+            }
+            _ => Err(Error::CipherTextDecryptionError.into()),
+        }
+    }
+}
+
+#[derive(Clone, Encode, Decode, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct AuditorPayload {
+    pub encrypted_amount: CipherTextWithHint,
+    pub amount_equal_cipher_proof: CipherEqualDifferentPubKeyProof,
+}
+
+/// Holds the memo for confidential transaction sent by the sender.
+#[derive(Clone, Encode, Decode, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct TransferTxMemo {
+    pub enc_amount_using_sender: CipherText,
+    pub enc_amount_using_receiver: CipherText,
+    pub refreshed_enc_balance: CipherText,
+    pub enc_amount_for_mediator: Option<CipherTextWithHint>,
+}
+
+/// Holds the proofs and memo of the confidential transaction sent by the sender.
+#[derive(Clone, Encode, Decode, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ConfidentialTransferProof {
+    pub amount_equal_cipher_proof: CipherEqualDifferentPubKeyProof,
+    pub non_neg_amount_proof: InRangeProof,
+    pub enough_fund_proof: InRangeProof,
+    pub memo: TransferTxMemo,
+    pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
+    pub amount_correctness_proof: CorrectnessProof,
+    pub auditors: BTreeMap<AuditorId, AuditorPayload>,
+}
+
+impl ConfidentialTransferProof {
+    /// Create a confidential asset transfer proof.
+    pub fn new<T: RngCore + CryptoRng>(
         sender_account: &ElgamalKeys,
-        sender_init_balance: &EncryptedAmount,
+        sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_key: &ElgamalPublicKey,
         mediator_pub_key: Option<&ElgamalPublicKey>,
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         amount: Balance,
         rng: &mut T,
-    ) -> Result<ConfidentialTransferProof> {
+    ) -> Result<Self> {
         // Ensure the sender has enough funds.
         ensure!(
             sender_balance >= amount,
@@ -125,10 +191,31 @@ impl TransferTransactionSender for CtxSender {
         )?;
 
         // Add the necessary payload for auditors.
-        let auditors_payload =
-            add_transaction_auditor(auditors_enc_pub_keys, &sender_account.public, &witness, rng)?;
+        let auditors = auditors_enc_pub_keys
+            .iter()
+            .map(|(auditor_id, auditor_enc_pub_key)| -> Result<_> {
+                let encrypted_amount = auditor_enc_pub_key.const_time_encrypt(&witness, rng);
 
-        Ok(ConfidentialTransferProof {
+                // Prove that the sender and auditor's ciphertexts are encrypting the same
+                // commitment witness.
+                let amount_equal_cipher_proof = single_property_prover(
+                    EncryptingSameValueProverAwaitingChallenge {
+                        pub_key1: sender_account.public,
+                        pub_key2: *auditor_enc_pub_key,
+                        w: witness.clone(),
+                        pc_gens: &gens,
+                    },
+                    rng,
+                )?;
+
+                Ok((*auditor_id, AuditorPayload {
+                    encrypted_amount,
+                    amount_equal_cipher_proof,
+                }))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+
+        Ok(Self {
             amount_equal_cipher_proof,
             non_neg_amount_proof,
             enough_fund_proof,
@@ -140,102 +227,40 @@ impl TransferTransactionSender for CtxSender {
                 refreshed_enc_balance,
                 enc_amount_for_mediator,
             },
-            auditors_payload,
+            auditors,
         })
     }
-}
 
-fn add_transaction_auditor<T: RngCore + CryptoRng>(
-    auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
-    sender_enc_pub_key: &ElgamalPublicKey,
-    amount_witness: &CommitmentWitness,
-    rng: &mut T,
-) -> Result<Vec<AuditorPayload>> {
-    let gens = PedersenGens::default();
-
-    let mut payload_vec: Vec<AuditorPayload> = Vec::with_capacity(auditors_enc_pub_keys.len());
-    // Add the required payload for the auditors.
-    let _: Result<()> = auditors_enc_pub_keys
-        .iter()
-        .map(|(auditor_id, auditor_enc_pub_key)| {
-            let encrypted_amount = auditor_enc_pub_key.const_time_encrypt(amount_witness, rng);
-
-            // Prove that the sender and auditor's ciphertexts are encrypting the same
-            // commitment witness.
-            let amount_equal_cipher_proof = single_property_prover(
-                EncryptingSameValueProverAwaitingChallenge {
-                    pub_key1: *sender_enc_pub_key,
-                    pub_key2: *auditor_enc_pub_key,
-                    w: amount_witness.clone(),
-                    pc_gens: &gens,
-                },
-                rng,
-            )?;
-
-            let payload = AuditorPayload {
-                auditor_id: *auditor_id,
-                encrypted_amount,
-                amount_equal_cipher_proof,
-            };
-
-            payload_vec.push(payload);
-            Ok(())
-        })
-        .collect();
-
-    Ok(payload_vec)
-}
-
-// ------------------------------------------------------------------------------------------------
-// -                                          Receiver                                            -
-// ------------------------------------------------------------------------------------------------
-
-/// The receiver of a confidential transaction. Receiver finalizes and processes
-/// transaction.
-#[derive(Clone, Debug)]
-pub struct CtxReceiver;
-
-impl TransferTransactionReceiver for CtxReceiver {
-    fn finalize_transaction(
+    /// Receiver verify the transaction amount using their private key.
+    pub fn receiver_verify(
         &self,
-        init_tx: &ConfidentialTransferProof,
         receiver_account: ElgamalKeys,
         amount: Balance,
     ) -> Result<()> {
         // Check that the amount is correct.
         receiver_account
             .secret
-            .verify(&init_tx.memo.enc_amount_using_receiver, &amount.into())
+            .verify(&self.memo.enc_amount_using_receiver, &amount.into())
             .map_err(|_| Error::TransactionAmountMismatch {
                 expected_amount: amount,
             })?;
 
         Ok(())
     }
-}
 
-// ------------------------------------------------------------------------------------------------
-// -                                           Mediator                                           -
-// ------------------------------------------------------------------------------------------------
-
-#[derive(Clone, Debug)]
-pub struct CtxMediator;
-
-impl TransferTransactionMediator for CtxMediator {
-    fn justify_transaction<R: RngCore + CryptoRng>(
+    /// Receiver verify the transaction amount using their private key.
+    pub fn mediator_verify<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &ConfidentialTransferProof,
         amount_source: AmountSource,
         sender_account: &ElgamalPublicKey,
-        sender_init_balance: &EncryptedAmount,
+        sender_init_balance: &CipherText,
         receiver_account: &ElgamalPublicKey,
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
     ) -> Result<()> {
         // Verify sender's part of the transaction.
         // This includes checking the auditors' payload.
-        let _ = verify_initialized_transaction(
-            &init_tx,
+        self.verify(
             sender_account,
             sender_init_balance,
             receiver_account,
@@ -244,222 +269,128 @@ impl TransferTransactionMediator for CtxMediator {
         )?;
 
         // Verify that the encrypted amount is correct.
-        let amount = amount_source.get_amount(init_tx.memo.enc_amount_for_mediator.as_ref())?;
-        verify_amount_correctness(&init_tx, amount, sender_account)?;
+        let amount = amount_source.get_amount(self.memo.enc_amount_for_mediator.as_ref())?;
+        self.verify_amount_correctness(amount, sender_account)?;
 
         Ok(())
     }
-}
 
-// ------------------------------------------------------------------------------------------------
-// -                                          Validator                                           -
-// ------------------------------------------------------------------------------------------------
-
-/// Transaction Validator.
-#[derive(Clone, Debug)]
-pub struct TransactionValidator;
-
-impl TransferTransactionVerifier for TransactionValidator {
-    fn verify_transaction<R: RngCore + CryptoRng>(
+    /// Verify the ZK-proofs using only public information.
+    pub fn verify<R: RngCore + CryptoRng>(
         &self,
-        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
-        sender_init_balance: &EncryptedAmount,
+        sender_init_balance: &CipherText,
         receiver_account: &ElgamalPublicKey,
         auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
         rng: &mut R,
     ) -> Result<()> {
-        verify_initialized_transaction(
-            init_tx,
-            sender_account,
-            sender_init_balance,
-            receiver_account,
-            auditors_enc_pub_keys,
-            rng,
+        let gens = &PedersenGens::default();
+
+        // Verify that the encrypted amounts are equal.
+        single_property_verifier(
+            &EncryptingSameValueVerifier {
+                pub_key1: *sender_account,
+                pub_key2: *receiver_account,
+                cipher1: self.memo.enc_amount_using_sender,
+                cipher2: self.memo.enc_amount_using_receiver,
+                pc_gens: &gens,
+            },
+            self.amount_equal_cipher_proof,
         )?;
+
+        // Verify that the amount is not negative.
+        let commitment = self.memo.enc_amount_using_sender.y.compress();
+        self.non_neg_amount_proof.verify(&commitment, BALANCE_RANGE, rng)?;
+
+        // verify that the balance refreshment was done correctly.
+        single_property_verifier(
+            &CipherTextRefreshmentVerifier::new(
+                *sender_account,
+                *sender_init_balance,
+                self.memo.refreshed_enc_balance,
+                &gens,
+            ),
+            self.balance_refreshed_same_proof,
+        )?;
+
+        // Verify that the balance has enough fund.
+        let updated_balance = self.memo.refreshed_enc_balance - self.memo.enc_amount_using_sender;
+        let commitment = updated_balance.y.compress();
+        self.enough_fund_proof.verify(&commitment, BALANCE_RANGE, rng)?;
+
+        // Verify that all auditors' payload is included, and
+        // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
+        ensure!(
+            self.auditors.len() == auditors_enc_pub_keys.len(),
+            Error::AuditorPayloadError
+        );
+    
+        for (auditor_id, auditor_pub_key) in auditors_enc_pub_keys {
+            match self.auditors.get(auditor_id) {
+                Some(auditor) => {
+                    // Verify that the encrypted amounts are equal.
+                    single_property_verifier(
+                        &EncryptingSameValueVerifier {
+                            pub_key1: *sender_account,
+                            pub_key2: *auditor_pub_key,
+                            cipher1: self.memo.enc_amount_using_sender,
+                            cipher2: auditor.encrypted_amount.elgamal_cipher,
+                            pc_gens: &gens,
+                        },
+                        auditor.amount_equal_cipher_proof,
+                    )?;
+                }
+                None => {
+                    return Err(Error::AuditorPayloadError);
+                }
+            }
+        }
 
         Ok(())
     }
-}
 
-pub fn verify_initialized_transaction<R: RngCore + CryptoRng>(
-    transaction: &ConfidentialTransferProof,
-    sender_account: &ElgamalPublicKey,
-    sender_init_balance: &EncryptedAmount,
-    receiver_account: &ElgamalPublicKey,
-    auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
-    rng: &mut R,
-) -> Result<()> {
-    verify_initial_transaction_proofs(
-        transaction,
-        sender_account,
-        sender_init_balance,
-        receiver_account,
-        auditors_enc_pub_keys,
-        rng,
-    )?;
-
-    Ok(())
-}
-
-fn verify_initial_transaction_proofs<R: RngCore + CryptoRng>(
-    transaction: &ConfidentialTransferProof,
-    sender_account: &ElgamalPublicKey,
-    sender_init_balance: &EncryptedAmount,
-    receiver_account: &ElgamalPublicKey,
-    auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
-    rng: &mut R,
-) -> Result<()> {
-    let memo = &transaction.memo;
-    let init_data = &transaction;
-    let gens = &PedersenGens::default();
-
-    // Verify that the encrypted amounts are equal.
-    single_property_verifier(
-        &EncryptingSameValueVerifier {
-            pub_key1: *sender_account,
-            pub_key2: *receiver_account,
-            cipher1: memo.enc_amount_using_sender,
-            cipher2: memo.enc_amount_using_receiver,
-            pc_gens: &gens,
-        },
-        init_data.amount_equal_cipher_proof,
-    )?;
-
-    // Verify that the amount is not negative.
-    let commitment = init_data.memo.enc_amount_using_sender.y.compress();
-    init_data.non_neg_amount_proof.verify(&commitment, BALANCE_RANGE, rng)?;
-
-    // verify that the balance refreshment was done correctly.
-    single_property_verifier(
-        &CipherTextRefreshmentVerifier::new(
-            *sender_account,
-            *sender_init_balance,
-            memo.refreshed_enc_balance,
-            &gens,
-        ),
-        init_data.balance_refreshed_same_proof,
-    )?;
-
-    // Verify that the balance has enough fund.
-    let updated_balance = init_data.memo.refreshed_enc_balance - init_data.memo.enc_amount_using_sender;
-    let commitment = updated_balance.y.compress();
-    init_data.enough_fund_proof.verify(&commitment, BALANCE_RANGE, rng)?;
-
-    // Verify that all auditors' payload is included, and
-    // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
-    verify_auditor_payload(
-        &init_data.auditors_payload,
-        auditors_enc_pub_keys,
-        *sender_account,
-        init_data.memo.enc_amount_using_sender,
-    )?;
-
-    Ok(())
-}
-
-pub fn verify_amount_correctness(
-    init_tx: &ConfidentialTransferProof,
-    amount: Balance,
-    sender_account: &ElgamalPublicKey,
-) -> Result<()> {
-    let gens = &PedersenGens::default();
-
-    // Verify that the encrypted amount is correct.
-    single_property_verifier(
-        &CorrectnessVerifier {
-            value: amount.into(),
-            pub_key: *sender_account,
-            cipher: init_tx.memo.enc_amount_using_sender,
-            pc_gens: &gens,
-        },
-        init_tx.amount_correctness_proof,
-    )?;
-
-    Ok(())
-}
-
-fn verify_auditor_payload(
-    auditors_payload: &[AuditorPayload],
-    auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
-    sender_enc_pub_key: ElgamalPublicKey,
-    sender_enc_amount: EncryptedAmount,
-) -> Result<()> {
-    ensure!(
-        auditors_payload.len() == auditors_enc_pub_keys.len(),
-        Error::AuditorPayloadError
-    );
-
-    let gens = &PedersenGens::default();
-    let _: Result<()> = auditors_enc_pub_keys
-        .iter()
-        .map(|(auditor_id, auditor_pub_key)| {
-            let mut found_auditor = false;
-            let _: Result<()> = auditors_payload
-                .iter()
-                .map(|payload| {
-                    if *auditor_id == payload.auditor_id {
-                        // Verify that the encrypted amounts are equal.
-                        single_property_verifier(
-                            &EncryptingSameValueVerifier {
-                                pub_key1: sender_enc_pub_key,
-                                pub_key2: *auditor_pub_key,
-                                cipher1: sender_enc_amount,
-                                cipher2: payload.encrypted_amount.elgamal_cipher,
-                                pc_gens: &gens,
-                            },
-                            payload.amount_equal_cipher_proof,
-                        )?;
-                        found_auditor |= true;
-                    }
-                    Ok(())
-                })
-                .collect();
-            ensure!(found_auditor, Error::AuditorPayloadError);
-            Ok(())
-        })
-        .collect();
-
-    Ok(())
-}
-
-// ------------------------------------------------------------------------------------------------
-// -                                          Auditor                                           -
-// ------------------------------------------------------------------------------------------------
-
-/// Transaction Validator.
-#[derive(Clone, Debug)]
-pub struct CtxAuditor;
-
-impl TransferTransactionAuditor for CtxAuditor {
     /// Verify the initialized transaction.
     /// Audit the sender's encrypted amount.
-    fn audit_transaction(
+    pub fn auditor_verify(
         &self,
-        init_tx: &ConfidentialTransferProof,
         sender_account: &ElgamalPublicKey,
-        _receiver_account: &ElgamalPublicKey,
-        auditor_enc_key: &(AuditorId, ElgamalKeys),
+        (auditor_id, auditor_enc_key): &(AuditorId, ElgamalKeys),
     ) -> Result<()> {
-        // If all checks pass, decrypt the encrypted amount and verify sender's correctness proof.
-        let _: Result<()> = init_tx
-            .auditors_payload
-            .iter()
-            .map(|payload| {
-                if payload.auditor_id == auditor_enc_key.0 {
-                    let amount = auditor_enc_key
-                        .1
-                        .secret
-                        .const_time_decrypt(&payload.encrypted_amount)?;
+        match self.auditors.get(auditor_id) {
+            Some(auditor) => {
+                let amount = auditor_enc_key
+                    .secret
+                    .const_time_decrypt(&auditor.encrypted_amount)?;
 
-                    // Verify that the encrypted amount is correct.
-                    verify_amount_correctness(&init_tx, amount, sender_account)?;
-                }
+                // Verify that the encrypted amount is correct.
+                self.verify_amount_correctness(amount, sender_account)?;
                 Ok(())
-            })
-            .collect();
+            }
+            None => {
+                Err(Error::AuditorPayloadError)
+            }
+        }
+    }
 
-        Err(Error::AuditorPayloadError.into())
+    pub fn verify_amount_correctness(
+        &self,
+        amount: Balance,
+        sender_account: &ElgamalPublicKey,
+    ) -> Result<()> {
+        let gens = &PedersenGens::default();
+    
+        // Verify that the encrypted amount is correct.
+        single_property_verifier(
+            &CorrectnessVerifier {
+                value: amount.into(),
+                pub_key: *sender_account,
+                cipher: self.memo.enc_amount_using_sender,
+                pc_gens: &gens,
+            },
+            self.amount_correctness_proof,
+        )?;
+    
+        Ok(())
     }
 }
 
@@ -479,9 +410,8 @@ mod tests {
             encrypting_same_value_proof::CipherEqualDifferentPubKeyProof,
             range_proof::InRangeProof,
         },
-        ElgamalKeys, ElgamalPublicKey, EncryptedAmount, Scalar, TransferTxMemo,
+        ElgamalKeys, ElgamalPublicKey, CipherText, Scalar,
     };
-    use codec::Compact;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use rand_core::{CryptoRng, RngCore};
@@ -506,9 +436,9 @@ mod tests {
     ) -> TransferTxMemo {
         let (_, enc_amount_using_receiver) = receiver_pub_key.encrypt_value(amount.into(), rng);
         TransferTxMemo {
-            enc_amount_using_sender: EncryptedAmount::default(),
+            enc_amount_using_sender: CipherText::default(),
             enc_amount_using_receiver,
-            refreshed_enc_balance: EncryptedAmount::default(),
+            refreshed_enc_balance: CipherText::default(),
             enc_amount_for_mediator: None,
         }
     }
@@ -517,7 +447,7 @@ mod tests {
         receiver_enc_pub_key: ElgamalPublicKey,
         balance: Balance,
         rng: &mut R,
-    ) -> Result<EncryptedAmount> {
+    ) -> Result<CipherText> {
         let (_, enc_balance) = receiver_enc_pub_key.encrypt_value(Scalar::from(balance), rng);
 
         Ok(enc_balance)
@@ -535,7 +465,7 @@ mod tests {
             enough_fund_proof: InRangeProof::build(rng),
             balance_refreshed_same_proof: CipherEqualSamePubKeyProof::default(),
             amount_correctness_proof: CorrectnessProof::default(),
-            auditors_payload: [].to_vec(),
+            auditors: BTreeMap::default(),
         }
     }
 
@@ -544,7 +474,6 @@ mod tests {
     #[test]
     #[wasm_bindgen_test]
     fn test_finalize_ctx_success() {
-        let ctx_receiver = CtxReceiver;
         let expected_amount = 10;
         let balance = 0;
         let mut rng = StdRng::from_seed([17u8; 32]);
@@ -555,7 +484,7 @@ mod tests {
         let _enc_balance = mock_gen_account(receiver_account.public, balance, &mut rng).unwrap();
 
         let result =
-            ctx_receiver.finalize_transaction(&ctx_init_data, receiver_account, expected_amount);
+            ctx_init_data.receiver_verify(receiver_account, expected_amount);
 
         result.unwrap();
         // Correctness of the proof will be verified in the verify function
@@ -564,7 +493,6 @@ mod tests {
     #[test]
     #[wasm_bindgen_test]
     fn test_finalize_ctx_amount_mismatch_error() {
-        let ctx_receiver = CtxReceiver;
         let expected_amount = 10;
         let received_amount = 20;
         let mut rng = StdRng::from_seed([17u8; 32]);
@@ -574,7 +502,7 @@ mod tests {
         let ctx_init_data = mock_ctx_init_data(receiver_account.public, received_amount, &mut rng);
 
         let result =
-            ctx_receiver.finalize_transaction(&ctx_init_data, receiver_account, expected_amount);
+            ctx_init_data.receiver_verify(receiver_account, expected_amount);
 
         assert_err!(result, Error::TransactionAmountMismatch { expected_amount });
     }
@@ -584,10 +512,6 @@ mod tests {
     #[test]
     #[wasm_bindgen_test]
     fn test_ctx_create_finalize_validate_success() {
-        let sender = CtxSender;
-        let receiver = CtxReceiver;
-        let mediator = CtxMediator;
-        let tx_validator = TransactionValidator;
         let sender_balance = 40;
         let receiver_balance = 0;
         let amount = 30;
@@ -607,7 +531,7 @@ mod tests {
             mock_gen_account(sender_account.public, sender_balance, &mut rng).unwrap();
 
         // Create the transaction and check its result and state
-        let result = sender.create_transaction(
+        let result = ConfidentialTransferProof::new(
             &sender_account,
             &sender_init_balance,
             sender_balance,
@@ -620,14 +544,11 @@ mod tests {
         let ctx_init_data = result.unwrap();
 
         // Finalize the transaction and check its state.
-        receiver
-            .finalize_transaction(&ctx_init_data, receiver_account.clone(), amount)
+        ctx_init_data.receiver_verify(receiver_account.clone(), amount)
             .unwrap();
 
         // Justify the transaction
-        let _result = mediator
-            .justify_transaction(
-                &ctx_init_data,
+        let _result = ctx_init_data.mediator_verify(
                 AmountSource::Encrypted(&mediator_account),
                 &sender_account.public,
                 &sender_init_balance,
@@ -637,9 +558,7 @@ mod tests {
             )
             .unwrap();
 
-        assert!(tx_validator
-            .verify_transaction(
-                &ctx_init_data,
+        assert!(ctx_init_data.verify(
                 &sender_account.public,
                 &sender_init_balance,
                 &receiver_account.public,
@@ -674,7 +593,7 @@ mod tests {
         seed0: [u8; 32],
         seed1: u8,
         balance: Balance,
-    ) -> (ElgamalKeys, EncryptedAmount) {
+    ) -> (ElgamalKeys, CipherText) {
         let mut rng = StdRng::from_seed(seed0);
 
         let enc_keys = mock_gen_enc_key_pair(seed1);
@@ -692,10 +611,6 @@ mod tests {
         validator_check_fails: bool,
         auditors_list: &[(AuditorId, ElgamalKeys)],
     ) {
-        let sender = CtxSender;
-        let receiver = CtxReceiver;
-        let mediator = CtxMediator;
-        let validator = TransactionValidator;
         let sender_balance = 500;
         let receiver_balance = 0;
         let amount = 400;
@@ -711,8 +626,7 @@ mod tests {
             account_create_helper([17u8; 32], 100u8, sender_balance);
 
         // Create the transaction and check its result and state
-        let ctx_init = sender
-            .create_transaction(
+        let ctx_init = ConfidentialTransferProof::new(
                 &sender_account,
                 &sender_init_balance,
                 sender_balance,
@@ -725,13 +639,11 @@ mod tests {
             .unwrap();
 
         // Finalize the transaction and check its state
-        receiver
-            .finalize_transaction(&ctx_init, receiver_account.clone(), amount)
+        ctx_init.receiver_verify(receiver_account.clone(), amount)
             .unwrap();
 
         // Justify the transaction
-        let result = mediator.justify_transaction(
-            &ctx_init,
+        let result = ctx_init.mediator_verify(
             AmountSource::Encrypted(&mediator_enc_keys),
             &sender_account.public,
             &sender_init_balance,
@@ -746,8 +658,7 @@ mod tests {
         }
 
         let _ctx_just = result.unwrap();
-        let result = validator.verify_transaction(
-            &ctx_init,
+        let result = ctx_init.verify(
             &sender_account.public,
             &sender_init_balance,
             &receiver_account.public,
@@ -783,12 +694,9 @@ mod tests {
 
         // ----------------------- Auditing
         let _ = auditors_list.iter().map(|auditor| {
-            let transaction_auditor = CtxAuditor;
-            assert!(transaction_auditor
-                .audit_transaction(
-                    &ctx_init,
+            assert!(ctx_init
+                .auditor_verify(
                     &sender_account.public,
-                    &receiver_account.public,
                     auditor,
                 )
                 .is_ok());
@@ -803,7 +711,7 @@ mod tests {
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (Compact(index), auditor_keys)
+                (AuditorId(index), auditor_keys)
             })
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();

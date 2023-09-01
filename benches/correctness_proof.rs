@@ -8,7 +8,8 @@ use confidential_assets::{
         encryption_proofs::{ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL},
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
-    Balance, ElgamalPublicKey, ConfidentialTransferProof,
+    Balance, ElgamalPublicKey,
+    transaction::ConfidentialTransferProof,
 };
 
 fn setup_correctness_search(init_tx: &ConfidentialTransferProof) -> (RistrettoPoint, RistrettoPoint) {
