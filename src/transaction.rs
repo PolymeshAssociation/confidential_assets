@@ -231,50 +231,6 @@ impl ConfidentialTransferProof {
         })
     }
 
-    /// Receiver verify the transaction amount using their private key.
-    pub fn receiver_verify(
-        &self,
-        receiver_account: ElgamalKeys,
-        amount: Balance,
-    ) -> Result<()> {
-        // Check that the amount is correct.
-        receiver_account
-            .secret
-            .verify(&self.memo.enc_amount_using_receiver, &amount.into())
-            .map_err(|_| Error::TransactionAmountMismatch {
-                expected_amount: amount,
-            })?;
-
-        Ok(())
-    }
-
-    /// Receiver verify the transaction amount using their private key.
-    pub fn mediator_verify<R: RngCore + CryptoRng>(
-        &self,
-        amount_source: AmountSource,
-        sender_account: &ElgamalPublicKey,
-        sender_init_balance: &CipherText,
-        receiver_account: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &[(AuditorId, ElgamalPublicKey)],
-        rng: &mut R,
-    ) -> Result<()> {
-        // Verify sender's part of the transaction.
-        // This includes checking the auditors' payload.
-        self.verify(
-            sender_account,
-            sender_init_balance,
-            receiver_account,
-            auditors_enc_pub_keys,
-            rng,
-        )?;
-
-        // Verify that the encrypted amount is correct.
-        let amount = amount_source.get_amount(self.memo.enc_amount_for_mediator.as_ref())?;
-        self.verify_amount_correctness(amount, sender_account)?;
-
-        Ok(())
-    }
-
     /// Verify the ZK-proofs using only public information.
     pub fn verify<R: RngCore + CryptoRng>(
         &self,
@@ -345,6 +301,36 @@ impl ConfidentialTransferProof {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    /// Receiver verify the transaction amount using their private key.
+    pub fn receiver_verify(
+        &self,
+        receiver_account: ElgamalKeys,
+        amount: Balance,
+    ) -> Result<()> {
+        // Check that the amount is correct.
+        receiver_account
+            .secret
+            .verify(&self.memo.enc_amount_using_receiver, &amount.into())
+            .map_err(|_| Error::TransactionAmountMismatch {
+                expected_amount: amount,
+            })?;
+
+        Ok(())
+    }
+
+    /// Receiver verify the transaction amount using their private key.
+    pub fn mediator_verify(
+        &self,
+        amount_source: AmountSource,
+        sender_account: &ElgamalPublicKey,
+    ) -> Result<()> {
+        // Verify that the encrypted amount is correct.
+        let amount = amount_source.get_amount(self.memo.enc_amount_for_mediator.as_ref())?;
+        self.verify_amount_correctness(amount, sender_account)?;
 
         Ok(())
     }
@@ -551,10 +537,6 @@ mod tests {
         let _result = ctx_init_data.mediator_verify(
                 AmountSource::Encrypted(&mediator_account),
                 &sender_account.public,
-                &sender_init_balance,
-                &receiver_account.public,
-                &[],
-                &mut rng,
             )
             .unwrap();
 
@@ -643,21 +625,23 @@ mod tests {
             .unwrap();
 
         // Justify the transaction
-        let result = ctx_init.mediator_verify(
+        ctx_init.mediator_verify(
             AmountSource::Encrypted(&mediator_enc_keys),
             &sender_account.public,
-            &sender_init_balance,
-            &receiver_account.public,
-            mediator_auditor_list,
-            &mut rng,
-        );
+        ).unwrap();
 
         if mediator_check_fails {
+            let result = ctx_init.verify(
+                &sender_account.public,
+                &sender_init_balance,
+                &receiver_account.public,
+                mediator_auditor_list,
+                &mut rng,
+            );
             assert_err!(result, Error::AuditorPayloadError);
             return;
         }
 
-        let _ctx_just = result.unwrap();
         let result = ctx_init.verify(
             &sender_account.public,
             &sender_init_balance,

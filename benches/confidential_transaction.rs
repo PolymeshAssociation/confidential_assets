@@ -414,26 +414,19 @@ fn bench_transaction_mediator(
     c: &mut Criterion,
     mediator_account: ElgamalKeys,
     sender_pub_account: ElgamalPublicKey,
-    receiver_pub_account: ElgamalPublicKey,
     transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
 ) {
-    let mut rng = thread_rng();
-
     let mut group = c.benchmark_group("MERCAT Transaction");
-    for (amount, sender_balance, init_tx) in &transactions {
+    for (amount, _sender_balance, init_tx) in &transactions {
         let label = format!("initial_balance ({:?})", amount);
         group.bench_with_input(
             BenchmarkId::new("Mediator", label),
-            &(sender_balance, init_tx.clone()),
-            |b, (sender_balance, init_tx)| {
+            &init_tx,
+            |b, init_tx| {
                 b.iter(|| {
                     init_tx.mediator_verify(
                             AmountSource::Encrypted(&mediator_account),
                             &sender_pub_account,
-                            sender_balance,
-                            &receiver_pub_account,
-                            &[],
-                            &mut rng,
                         )
                         .unwrap();
                 })
@@ -589,7 +582,6 @@ fn bench_transaction(c: &mut Criterion) {
         c,
         private_account,
         sender_pub_account.clone(),
-        receiver_account.public.clone(),
         finalized_transactions.clone(),
     );
 
