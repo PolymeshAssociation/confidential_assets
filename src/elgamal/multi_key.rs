@@ -1,7 +1,7 @@
 //! Encrypt the same `CommitmentWitness` with multiple keys.
 
 use crate::{
-    elgamal::{CommitmentWitness, ElgamalPublicKey},
+    elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     codec_wrapper::{
         RistrettoPointDecoder, RistrettoPointEncoder,
     },
@@ -66,6 +66,16 @@ impl CipherTextMultiKey {
           y,
         }
     }
+
+    /// Convert to a list of `CipherText`.
+    pub fn ciphertexts(&self) -> Vec<CipherText> {
+        self.x.iter().map(|x| CipherText { x: *x, y: self.y }).collect()
+    }
+
+    /// Get one CipherText.
+    pub fn get(&self, idx: usize) -> Option<CipherText> {
+        self.x.get(idx).map(|x| CipherText { x: *x, y: self.y })
+    }
 }
 
 /// Builder for encrypting a secret using multiple public keys.
@@ -76,9 +86,9 @@ pub struct CipherTextMultiKeyBuilder {
 }
 
 impl CipherTextMultiKeyBuilder {
-    pub fn new(
+    pub fn new<'a>(
         witness: &CommitmentWitness,
-        keys: &[ElgamalPublicKey],
+        keys: impl Iterator<Item = &'a ElgamalPublicKey>,
     ) -> Self {
         let gens = PedersenGens::default();
         let y = gens.commit(witness.value, witness.blinding);
@@ -86,7 +96,7 @@ impl CipherTextMultiKeyBuilder {
         let mut builder = Self {
             witness: witness.clone(),
             cipher: CipherTextMultiKey {
-                x: Vec::with_capacity(keys.len()),
+                x: Vec::new(),
                 y,
             }
         };
@@ -101,7 +111,7 @@ impl CipherTextMultiKeyBuilder {
 }
 
 impl CipherTextMultiKeyBuilder {
-    pub fn append_keys(&mut self, keys: &[ElgamalPublicKey]) {
+    pub fn append_keys<'a>(&mut self, keys: impl Iterator<Item = &'a ElgamalPublicKey>) {
         for key in keys {
             self.append_key(&key);
         }

@@ -17,7 +17,7 @@ fn setup_correctness_search(init_tx: &ConfidentialTransferProof) -> (RistrettoPo
 
     // Setup "proof" verification.
     let (init_msg, fin_msg) = init_tx.amount_correctness_proof;
-    let cipher = init_tx.memo.enc_amount_using_sender;
+    let cipher = init_tx.sender_amount();
 
     // Calculate 'challenge' value.
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);

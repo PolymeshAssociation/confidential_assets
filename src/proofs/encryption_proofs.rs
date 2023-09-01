@@ -173,17 +173,17 @@ pub fn single_property_prover<
 /// Ok on success, or failure on error.
 pub fn single_property_verifier<Verifier: ProofVerifier>(
     verifier: &Verifier,
-    proof: ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
+    proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
 ) -> Result<()> {
-    let initial_message = proof.0;
-    let final_response = proof.1;
+    let initial_message = &proof.0;
+    let final_response = &proof.1;
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
     // Update the transcript with Prover's initial message
     initial_message.update_transcript(&mut transcript)?;
     let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)?;
 
-    verifier.verify(&challenge, &initial_message, &final_response)?;
+    verifier.verify(&challenge, initial_message, final_response)?;
 
     Ok(())
 }
@@ -288,19 +288,19 @@ mod tests {
         .unwrap();
 
         // Positive tests
-        assert!(single_property_verifier(&verifier0, (initial_message0, final_response0)).is_ok());
-        assert!(single_property_verifier(&verifier1, (initial_message1, final_response1)).is_ok());
+        assert!(single_property_verifier(&verifier0, &(initial_message0, final_response0)).is_ok());
+        assert!(single_property_verifier(&verifier1, &(initial_message1, final_response1)).is_ok());
 
         // Negative tests
         let bad_initial_message = CorrectnessInitialMessage::default();
         assert_err!(
-            single_property_verifier(&verifier0, (bad_initial_message, final_response0)),
+            single_property_verifier(&verifier0, &(bad_initial_message, final_response0)),
             Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
 
         let bad_final_response = CorrectnessFinalResponse::from(Scalar::one());
         assert_err!(
-            single_property_verifier(&verifier0, (initial_message0, bad_final_response)),
+            single_property_verifier(&verifier0, &(initial_message0, bad_final_response)),
             Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
     }

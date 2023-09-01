@@ -316,7 +316,7 @@ mod tests {
 
         // Non-Interactive ZKP test
         let proof = encryption_proofs::single_property_prover(prover_ac, &mut rng).unwrap();
-        assert!(encryption_proofs::single_property_verifier(&verifier, proof).is_ok());
+        assert!(encryption_proofs::single_property_verifier(&verifier, &proof).is_ok());
     }
 
     #[test]

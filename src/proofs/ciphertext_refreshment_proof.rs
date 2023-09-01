@@ -327,7 +327,7 @@ mod tests {
 
         let proof = encryption_proofs::single_property_prover(prover, &mut rng).unwrap();
 
-        assert!(encryption_proofs::single_property_verifier(&verifier, proof).is_ok());
+        assert!(encryption_proofs::single_property_verifier(&verifier, &proof).is_ok());
     }
 
     #[test]

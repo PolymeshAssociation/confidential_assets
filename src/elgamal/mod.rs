@@ -34,7 +34,7 @@ pub mod multi_key;
 pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
-pub use const_time_elgamal_encryption::CipherTextWithHint;
+pub use const_time_elgamal_encryption::{CipherTextHint, CipherTextWithHint};
 
 /// Prover's representation of the commitment secret.
 #[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop, Debug)]

@@ -13,6 +13,10 @@ pub enum Error {
     #[error("Encrypted value was not found within the valid range")]
     CipherTextDecryptionError,
 
+    /// Too many auditors.
+    #[error("The number of auditors is over the MAX_AUDITORS limit")]
+    TooManyAuditors,
+
     /// A proof verification error occurred.
     #[error("A proof verification error occurred")]
     VerificationError,

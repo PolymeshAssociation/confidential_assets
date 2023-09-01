@@ -1,7 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use confidential_assets::{
-    elgamal::{encrypt_using_two_pub_keys, CommitmentWitness, CipherText, CipherTextWithHint},
+    elgamal::{CommitmentWitness, CipherText, CipherTextWithHint},
+    elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
     errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
@@ -9,14 +10,15 @@ use confidential_assets::{
             CipherEqualSamePubKeyProof, CipherTextRefreshmentProverAwaitingChallenge,
         },
         correctness_proof::{CorrectnessProof, CorrectnessProverAwaitingChallenge},
-        encrypting_same_value_proof::{
-            CipherEqualDifferentPubKeyProof, EncryptingSameValueProverAwaitingChallenge,
+        ciphertext_same_value_proof::{
+            CipherTextSameValueProof,
+            CipherTextSameValueProverAwaitingChallenge,
         },
         encryption_proofs::single_property_prover,
         range_proof::InRangeProof,
     },
     transaction::{
-        AmountSource, ConfidentialTransferProof, TransferTxMemo,
+        AmountSource, ConfidentialTransferProof,
     },
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey,
     Scalar,
@@ -53,11 +55,10 @@ struct SenderProofGen {
     gens: PedersenGens,
     balance_refresh_enc_blinding: Scalar,
     // Outputs.
-    amount_equal_cipher_proof: Option<CipherEqualDifferentPubKeyProof>,
+    amounts: Option<CipherTextMultiKey>,
+    amount_equal_cipher_proof: Option<CipherTextSameValueProof>,
     non_neg_amount_proof: Option<InRangeProof>,
     enough_fund_proof: Option<InRangeProof>,
-    enc_amount_using_sender: Option<CipherText>,
-    enc_amount_using_receiver: Option<CipherText>,
     refreshed_enc_balance: Option<CipherText>,
     enc_amount_for_mediator: Option<CipherTextWithHint>,
     balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
@@ -91,11 +92,10 @@ impl SenderProofGen {
             balance_refresh_enc_blinding: Scalar::random(rng),
 
             // Outputs.
+            amounts: None,
             amount_equal_cipher_proof: None,
             non_neg_amount_proof: None,
             enough_fund_proof: None,
-            enc_amount_using_sender: None,
-            enc_amount_using_receiver: None,
             refreshed_enc_balance: None,
             enc_amount_for_mediator: None,
             balance_refreshed_same_proof: None,
@@ -107,17 +107,14 @@ impl SenderProofGen {
         self.run_to_stage(u32::MAX, rng)?;
 
         Ok(ConfidentialTransferProof {
+            amounts: self.amounts.unwrap(),
             amount_equal_cipher_proof: self.amount_equal_cipher_proof.unwrap(),
             non_neg_amount_proof: self.non_neg_amount_proof.unwrap(),
             enough_fund_proof: self.enough_fund_proof.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
             amount_correctness_proof: self.amount_correctness_proof.unwrap(),
-            memo: TransferTxMemo {
-                enc_amount_using_sender: self.enc_amount_using_sender.unwrap(),
-                enc_amount_using_receiver: self.enc_amount_using_receiver.unwrap(),
-                refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
-                enc_amount_for_mediator: self.enc_amount_for_mediator,
-            },
+            refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
+            enc_amount_for_mediator: self.enc_amount_for_mediator,
             auditors: Default::default(),
         })
     }
@@ -149,16 +146,13 @@ impl SenderProofGen {
             }
             2 => {
                 // Prove that the amount encrypted under different public keys are the same.
-                let (sender_new_enc_amount, receiver_new_enc_amount) =
-                    encrypt_using_two_pub_keys(&self.witness, self.sender_pub, self.receiver_pub);
-                self.enc_amount_using_sender = Some(sender_new_enc_amount);
-                self.enc_amount_using_receiver = Some(receiver_new_enc_amount);
+                let keys = vec![self.sender_pub, self.receiver_pub];
+                self.amounts = Some(CipherTextMultiKeyBuilder::new(&self.witness, keys.iter()).build());
             }
             3 => {
                 self.amount_equal_cipher_proof = Some(single_property_prover(
-                    EncryptingSameValueProverAwaitingChallenge {
-                        pub_key1: self.sender_pub,
-                        pub_key2: self.receiver_pub,
+                    CipherTextSameValueProverAwaitingChallenge {
+                        keys: vec![self.sender_pub, self.receiver_pub],
                         w: self.witness.clone(),
                         pc_gens: &self.gens,
                     },
@@ -290,7 +284,7 @@ fn bench_transaction_sender_proof_stage(
             &sender_account,
             &sender_init_balance,
             &receiver_account,
-            &[],
+            &Default::default(),
             &mut rng,
         ).expect(&format!("Verify Sender proof of amount {amount:?}"));
     }
@@ -318,7 +312,7 @@ fn bench_transaction_sender(
                             amount,
                             &rcvr_pub_account,
                             Some(&mediator_pub_key.clone()),
-                            &[],
+                            &Default::default(),
                             amount,
                             &mut rng,
                         )
@@ -340,7 +334,7 @@ fn bench_transaction_sender(
                     amount,
                     &rcvr_pub_account,
                     Some(&mediator_pub_key),
-                    &[],
+                    &Default::default(),
                     amount,
                     &mut rng,
                 )
@@ -369,7 +363,7 @@ fn bench_transaction_verify_sender_proof(
                         &sender_account,
                         &sender_balance,
                         &receiver_account,
-                        &[],
+                        &Default::default(),
                         &mut rng,
                     )
                     .unwrap()
@@ -456,7 +450,7 @@ fn bench_transaction_validator(
                             &sender_pub_account,
                             sender_balance,
                             &receiver_pub_account,
-                            &[],
+                            &Default::default(),
                             &mut rng,
                         )
                         .unwrap();

@@ -303,20 +303,20 @@ mod tests {
         // Positive test
         assert!(
             // 4th round
-            single_property_verifier(&verifier, (initial_message, final_response)).is_ok()
+            single_property_verifier(&verifier, &(initial_message, final_response)).is_ok()
         );
 
         // Negative tests
         let bad_initial_message = WellformednessInitialMessage::default();
         assert_err!(
             // 4th round
-            single_property_verifier(&verifier, (bad_initial_message, final_response)),
+            single_property_verifier(&verifier, &(bad_initial_message, final_response)),
             Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
 
         assert_err!(
             // 4th round
-            single_property_verifier(&verifier, (initial_message, bad_final_response)),
+            single_property_verifier(&verifier, &(initial_message, bad_final_response)),
             Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
     }

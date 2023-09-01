@@ -110,6 +110,13 @@ impl CipherTextHint {
         let decrypted_msg = xor_with_one_time_pad(random_2_h, &self.z);
         LittleEndian::read_u64(&decrypted_msg)
     }
+
+    pub fn ciphertext_with_hint(&self, cipher: CipherText) -> CipherTextWithHint {
+        CipherTextWithHint {
+            cipher,
+            hint: *self,
+        }
+    }
 }
 
 /// This data structure wraps a twisted Elgamal cipher text with the
