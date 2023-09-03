@@ -56,13 +56,18 @@ pub struct AuditorPayload {
 #[derive(Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConfidentialTransferProof {
+    /// Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
     pub amounts: CipherTextMultiKey,
+    /// ZK-proof that all encrypted transaction amounts in `amounts` is the same value.
     pub amount_equal_cipher_proof: CipherTextSameValueProof,
-    pub non_neg_amount_proof: InRangeProof,
-    pub enough_fund_proof: InRangeProof,
-    pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
-    pub auditors: BTreeMap<AuditorId, AuditorPayload>,
+    /// The sender's balance re-encrypted using a new blinding.
     pub refreshed_enc_balance: CipherText,
+    /// ZK-proof that `refreshed_enc_balance` encrypts the same value as the sender's balance.
+    pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
+    /// Bulletproof range proofs for "Non negative amount" and "Enough funds".
+    pub range_proofs: InRangeProof,
+    /// Auditor id lookup and hints.
+    pub auditors: BTreeMap<AuditorId, AuditorPayload>,
 }
 
 impl ConfidentialTransferProof {
@@ -113,10 +118,6 @@ impl ConfidentialTransferProof {
         let amounts = CipherTextMultiKeyBuilder::new(&witness, keys.iter());
         let amount_enc_blinding = witness.blinding();
 
-        // Prove that the amount is not negative.
-        let non_neg_amount_proof =
-            InRangeProof::prove(amount.into(), amount_enc_blinding, BALANCE_RANGE, rng)?;
-
         // Prove that the amount encrypted under different public keys are the same.
         let gens = PedersenGens::default();
         let amount_equal_cipher_proof = single_property_prover(
@@ -147,11 +148,18 @@ impl ConfidentialTransferProof {
             rng,
         )?;
 
-        // Prove that the sender has enough funds.
-        let blinding = balance_refresh_enc_blinding - amount_enc_blinding;
-        let enough_fund_proof = InRangeProof::prove(
-            (sender_balance - amount).into(),
-            blinding,
+        // Prove that the amount is not negative and
+        // prove that the sender has enough funds.
+        let updated_balance_blinding = balance_refresh_enc_blinding - amount_enc_blinding;
+        let range_proofs = InRangeProof::prove_multiple(
+            &[
+                amount.into(),
+                (sender_balance - amount).into(),
+            ],
+            &[
+                amount_enc_blinding,
+                updated_balance_blinding,
+            ],
             BALANCE_RANGE,
             rng,
         )?;
@@ -171,8 +179,7 @@ impl ConfidentialTransferProof {
         Ok(Self {
             amounts: amounts.build(),
             amount_equal_cipher_proof,
-            non_neg_amount_proof,
-            enough_fund_proof,
+            range_proofs,
             balance_refreshed_same_proof,
             refreshed_enc_balance,
             auditors,
@@ -208,10 +215,6 @@ impl ConfidentialTransferProof {
             &self.amount_equal_cipher_proof,
         )?;
 
-        // Verify that the amount is not negative.
-        let commitment = self.sender_amount().y.compress();
-        self.non_neg_amount_proof.verify(&commitment, BALANCE_RANGE, rng)?;
-
         // verify that the balance refreshment was done correctly.
         single_property_verifier(
             &CipherTextRefreshmentVerifier::new(
@@ -223,10 +226,12 @@ impl ConfidentialTransferProof {
             &self.balance_refreshed_same_proof,
         )?;
 
-        // Verify that the balance has enough fund.
+        // Verify that the amount is not negative and
+        // verify that the balance has enough fund.
+        let amount_commitment = self.sender_amount().y.compress();
         let updated_balance = self.refreshed_enc_balance - self.sender_amount();
-        let commitment = updated_balance.y.compress();
-        self.enough_fund_proof.verify(&commitment, BALANCE_RANGE, rng)?;
+        let updated_balance_commitment = updated_balance.y.compress();
+        self.range_proofs.verify_multiple(&[amount_commitment, updated_balance_commitment], BALANCE_RANGE, rng)?;
 
         Ok(())
     }

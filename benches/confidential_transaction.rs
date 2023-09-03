@@ -23,6 +23,7 @@ use confidential_assets::{
     Scalar,
     BALANCE_RANGE,
 };
+use codec::Encode;
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
@@ -56,8 +57,7 @@ struct SenderProofGen {
     // Outputs.
     amounts: Option<CipherTextMultiKey>,
     amount_equal_cipher_proof: Option<CipherTextSameValueProof>,
-    non_neg_amount_proof: Option<InRangeProof>,
-    enough_fund_proof: Option<InRangeProof>,
+    range_proofs: Option<InRangeProof>,
     refreshed_enc_balance: Option<CipherText>,
     balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
     auditors: BTreeMap<AuditorId, AuditorPayload>,
@@ -94,8 +94,7 @@ impl SenderProofGen {
             // Outputs.
             amounts: None,
             amount_equal_cipher_proof: None,
-            non_neg_amount_proof: None,
-            enough_fund_proof: None,
+            range_proofs: None,
             refreshed_enc_balance: None,
             balance_refreshed_same_proof: None,
             auditors: Default::default(),
@@ -108,8 +107,7 @@ impl SenderProofGen {
         Ok(ConfidentialTransferProof {
             amounts: self.amounts.unwrap(),
             amount_equal_cipher_proof: self.amount_equal_cipher_proof.unwrap(),
-            non_neg_amount_proof: self.non_neg_amount_proof.unwrap(),
-            enough_fund_proof: self.enough_fund_proof.unwrap(),
+            range_proofs: self.range_proofs.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
             refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
             auditors: self.auditors,
@@ -132,20 +130,10 @@ impl SenderProofGen {
                     .verify(&self.sender_init_balance, &self.sender_balance.into())?;
             }
             1 => {
-                // Prove that the amount is not negative.
-                let amount_enc_blinding = self.witness.blinding();
-                self.non_neg_amount_proof = Some(InRangeProof::prove(
-                    self.amount.into(),
-                    amount_enc_blinding,
-                    BALANCE_RANGE,
-                    rng,
-                )?);
-            }
-            2 => {
                 // Prove that the amount encrypted under different public keys are the same.
                 self.amounts = Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
-            3 => {
+            2 => {
                 self.amount_equal_cipher_proof = Some(single_property_prover(
                     CipherTextSameValueProverAwaitingChallenge {
                         keys: self.keys.clone(),
@@ -155,7 +143,7 @@ impl SenderProofGen {
                     rng,
                 )?);
             }
-            4 => {
+            3 => {
                 // Refresh the encrypted balance and prove that the refreshment was done
                 // correctly.
                 self.refreshed_enc_balance = Some(self.sender_init_balance.refresh_with_hint(
@@ -164,7 +152,7 @@ impl SenderProofGen {
                     &self.sender_balance.into(),
                 )?);
             }
-            5 => {
+            4 => {
                 let refreshed_enc_balance = self.refreshed_enc_balance.unwrap();
                 self.balance_refreshed_same_proof = Some(single_property_prover(
                     CipherTextRefreshmentProverAwaitingChallenge::new(
@@ -176,18 +164,25 @@ impl SenderProofGen {
                     rng,
                 )?);
             }
-            6 => {
-                // Prove that the sender has enough funds.
+            5 => {
+                // Prove that the amount is not negative and
+                // prove that the sender has enough funds.
                 let amount_enc_blinding = self.witness.blinding();
-                let blinding = self.balance_refresh_enc_blinding - amount_enc_blinding;
-                self.enough_fund_proof = Some(InRangeProof::prove(
-                    (self.sender_balance - self.amount).into(),
-                    blinding,
+                let updated_balance_blinding = self.balance_refresh_enc_blinding - amount_enc_blinding;
+                self.range_proofs = Some(InRangeProof::prove_multiple(
+                    &[
+                        self.amount.into(),
+                        (self.sender_balance - self.amount).into(),
+                    ],
+                    &[
+                        amount_enc_blinding,
+                        updated_balance_blinding,
+                    ],
                     BALANCE_RANGE,
                     rng,
                 )?);
             }
-            7 => {
+            6 => {
                 // Add the necessary payload for auditors.
                 self.auditors = self.auditor_keys
                     .iter()
@@ -327,7 +322,8 @@ fn bench_transaction_sender(
                     &mut rng,
                 )
                 .unwrap();
-            eprintln!("elapsed: {:.0?} ms", now.elapsed().as_secs_f32() * 1_000.0);
+            let size = tx.encoded_size();
+            eprintln!("elapsed: {:.0?} ms, size: {size:?}", now.elapsed().as_secs_f32() * 1_000.0);
             (amount, sender_balance, tx)
         })
         .collect();
@@ -471,7 +467,7 @@ fn bench_transaction(c: &mut Criterion) {
             )
         })
         .collect();
-    for stage in 1..=9 {
+    for stage in 1..=7 {
         bench_transaction_sender_proof_stage(
             c,
             sender_account.clone(),
