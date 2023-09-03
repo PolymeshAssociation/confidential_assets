@@ -68,8 +68,12 @@ impl SenderProofGen {
         amount: Balance,
         rng: &mut T,
     ) -> Self {
-        let keys = ConfidentialTransferProof::keys(&sender_account.public, receiver_pub_account, auditor_keys)
-            .expect("keys");
+        let keys = ConfidentialTransferProof::keys(
+            &sender_account.public,
+            receiver_pub_account,
+            auditor_keys,
+        )
+        .expect("keys");
         Self {
             // Inputs.
             sender_sec: sender_account.secret.clone(),
@@ -401,9 +405,7 @@ fn bench_transaction_auditor(
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx
-                        .auditor_verify(id, keys)
-                        .unwrap();
+                    init_tx.auditor_verify(id, keys).unwrap();
                 })
             },
         );
@@ -413,8 +415,10 @@ fn bench_transaction_auditor(
 fn bench_transaction(c: &mut Criterion) {
     let mut rng = thread_rng();
     let auditors = utility::generate_auditors(MAX_AUDITORS, &mut rng);
-    let auditor_keys: BTreeMap<_, _> =
-        auditors.iter().map(|(id, keys)| (*id, keys.public)).collect();
+    let auditor_keys: BTreeMap<_, _> = auditors
+        .iter()
+        .map(|(id, keys)| (*id, keys.public))
+        .collect();
     let (sender_account, sender_init_balance) = utility::create_account_with_amount(&mut rng, 0);
     let sender_pub_account = sender_account.public.clone();
 

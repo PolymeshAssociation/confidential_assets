@@ -200,10 +200,7 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
-        ensure!(
-            self.auditors.len() <= MAX_AUDITORS,
-            Error::TooManyAuditors
-        );
+        ensure!(self.auditors.len() <= MAX_AUDITORS, Error::TooManyAuditors);
         ensure!(
             self.auditors.len() == auditors_enc_pub_keys.len(),
             Error::AuditorPayloadError
@@ -519,7 +516,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_transaction_auditor() {
         // Make imaginary auditors.
-        let auditors_num = MAX_AUDITORS-1;
+        let auditors_num = MAX_AUDITORS - 1;
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
@@ -549,16 +546,8 @@ mod tests {
 
         // Change the order of auditors lists on the mediator and validator sides.
         // The tests still must pass.
-        let mediator_auditor_list = vec![
-            auditors_vec[1],
-            auditors_vec[0],
-            auditors_vec[2],
-        ];
-        let validator_auditor_list = vec![
-            auditors_vec[2],
-            auditors_vec[1],
-            auditors_vec[0],
-        ];
+        let mediator_auditor_list = vec![auditors_vec[1], auditors_vec[0], auditors_vec[2]];
+        let validator_auditor_list = vec![auditors_vec[2], auditors_vec[1], auditors_vec[0]];
 
         let mediator_auditor_list = mediator_auditor_list;
         let validator_auditor_list = validator_auditor_list;
@@ -578,10 +567,7 @@ mod tests {
         // Negative tests.
 
         // Sender misses an auditor. Mediator catches it.
-        let four_auditor_list = vec![
-            auditors_vec[0],
-            auditors_vec[2],
-        ];
+        let four_auditor_list = vec![auditors_vec[0], auditors_vec[2]];
         let four_auditor_list = four_auditor_list.as_slice();
 
         test_transaction_auditor_helper(

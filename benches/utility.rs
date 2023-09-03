@@ -1,6 +1,6 @@
 use confidential_assets::{
-    elgamal::ElgamalSecretKey, Balance, CipherText, ElgamalKeys, ElgamalPublicKey, Scalar,
-    transaction::AuditorId,
+    elgamal::ElgamalSecretKey, transaction::AuditorId, Balance, CipherText, ElgamalKeys,
+    ElgamalPublicKey, Scalar,
 };
 use rand::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
@@ -24,15 +24,18 @@ pub fn generate_auditors<R: RngCore + CryptoRng>(
     count: usize,
     rng: &mut R,
 ) -> BTreeMap<AuditorId, ElgamalKeys> {
-    (0..count).into_iter().map(|n| {
-        let secret_key = ElgamalSecretKey::new(Scalar::random(rng));
-        let keys = ElgamalKeys {
-            public: secret_key.get_public_key(),
-            secret: secret_key,
-        };
+    (0..count)
+        .into_iter()
+        .map(|n| {
+            let secret_key = ElgamalSecretKey::new(Scalar::random(rng));
+            let keys = ElgamalKeys {
+                public: secret_key.get_public_key(),
+                secret: secret_key,
+            };
 
-        (AuditorId(n as u32), keys)
-    }).collect()
+            (AuditorId(n as u32), keys)
+        })
+        .collect()
 }
 
 pub fn create_account_with_amount<R: RngCore + CryptoRng>(
