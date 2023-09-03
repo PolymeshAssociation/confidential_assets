@@ -519,11 +519,11 @@ mod tests {
     #[wasm_bindgen_test]
     fn test_transaction_auditor() {
         // Make imaginary auditors.
-        let auditors_num = 5;
+        let auditors_num = MAX_AUDITORS-1;
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (AuditorId(index), auditor_keys)
+                (AuditorId(index as u32), auditor_keys)
             })
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();
@@ -552,13 +552,9 @@ mod tests {
         let mediator_auditor_list = vec![
             auditors_vec[1],
             auditors_vec[0],
-            auditors_vec[3],
             auditors_vec[2],
-            auditors_vec[4],
         ];
         let validator_auditor_list = vec![
-            auditors_vec[4],
-            auditors_vec[3],
             auditors_vec[2],
             auditors_vec[1],
             auditors_vec[0],
@@ -583,9 +579,7 @@ mod tests {
 
         // Sender misses an auditor. Mediator catches it.
         let four_auditor_list = vec![
-            auditors_vec[1],
             auditors_vec[0],
-            auditors_vec[3],
             auditors_vec[2],
         ];
         let four_auditor_list = four_auditor_list.as_slice();
