@@ -2,7 +2,7 @@
 //! For more details see section 5.2 of the whitepaper.
 
 use crate::{
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    codec_wrapper::{WrappedCompressedRistretto, WrappedScalar},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{Error, Result},
     proofs::{
@@ -15,7 +15,7 @@ use crate::{
 };
 use bulletproofs::PedersenGens;
 use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, ristretto::RistrettoPoint, scalar::Scalar,
+    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
 };
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
@@ -23,7 +23,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 use sp_std::convert::From;
 
 /// The domain label for the correctness proof.
@@ -35,66 +35,29 @@ pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessChalle
 // Proof of Correct Encryption of the Given Value
 // ------------------------------------------------------------------------
 
-#[derive(PartialEq, Copy, Clone, Debug, Default)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CorrectnessFinalResponse(pub Scalar);
+pub struct CorrectnessFinalResponse(WrappedScalar);
 
 impl From<Scalar> for CorrectnessFinalResponse {
     fn from(response: Scalar) -> Self {
-        CorrectnessFinalResponse(response)
+        CorrectnessFinalResponse(response.into())
     }
 }
 
-impl Encode for CorrectnessFinalResponse {
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.0).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.0).encode_to(dest)
-    }
-}
-
-impl Decode for CorrectnessFinalResponse {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let scalar = <ScalarDecoder>::decode(input)?.0;
-        Ok(CorrectnessFinalResponse(scalar))
-    }
-}
-
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CorrectnessInitialMessage {
-    pub a: RistrettoPoint,
-    pub b: RistrettoPoint,
-}
-
-impl Encode for CorrectnessInitialMessage {
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.a).size_hint() + RistrettoPointEncoder(&self.b).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.a).encode_to(dest);
-        RistrettoPointEncoder(&self.b).encode_to(dest);
-    }
-}
-
-impl Decode for CorrectnessInitialMessage {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let a = <RistrettoPointDecoder>::decode(input)?.0;
-        let b = <RistrettoPointDecoder>::decode(input)?.0;
-
-        Ok(CorrectnessInitialMessage { a, b })
-    }
+    pub a: WrappedCompressedRistretto,
+    pub b: WrappedCompressedRistretto,
 }
 
 /// A default implementation used for testing.
 impl Default for CorrectnessInitialMessage {
     fn default() -> Self {
         CorrectnessInitialMessage {
-            a: RISTRETTO_BASEPOINT_POINT,
-            b: RISTRETTO_BASEPOINT_POINT,
+            a: RISTRETTO_BASEPOINT_POINT.into(),
+            b: RISTRETTO_BASEPOINT_POINT.into(),
         }
     }
 }
@@ -156,8 +119,8 @@ impl<'a> ProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a>
                 u: rand_commitment,
             },
             CorrectnessInitialMessage {
-                a: rand_commitment * self.pub_key.pub_key,
-                b: rand_commitment * self.pc_gens.B_blinding,
+                a: (rand_commitment * *self.pub_key.pub_key).into(),
+                b: (rand_commitment * self.pc_gens.B_blinding).into(),
             },
         )
     }
@@ -165,7 +128,7 @@ impl<'a> ProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a>
 
 impl ProofProver<CorrectnessFinalResponse> for CorrectnessProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CorrectnessFinalResponse {
-        CorrectnessFinalResponse(self.u + c.x() * self.w.blinding())
+        CorrectnessFinalResponse((self.u + c.x() * self.w.blinding()).into())
     }
 }
 
@@ -193,15 +156,18 @@ impl<'a> ProofVerifier for CorrectnessVerifier<'a> {
         initial_message: &Self::ZKInitialMessage,
         z: &Self::ZKFinalResponse,
     ) -> Result<()> {
+        let z = *z.0;
+        let a = initial_message.a.decompress();
+        let b = initial_message.b.decompress();
         let generators = self.pc_gens;
-        let y_prime = self.cipher.y - (self.value * generators.B);
+        let y_prime = *self.cipher.y - (self.value * generators.B);
 
         ensure!(
-            z.0 * self.pub_key.pub_key == initial_message.a + challenge.x() * self.cipher.x,
+            z * *self.pub_key.pub_key == a + challenge.x() * *self.cipher.x,
             Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
         ensure!(
-            z.0 * generators.B_blinding == initial_message.b + challenge.x() * y_prime,
+            z * generators.B_blinding == b + challenge.x() * y_prime,
             Error::CorrectnessFinalResponseVerificationError { check: 2 }
         );
         Ok(())
@@ -266,7 +232,7 @@ mod tests {
             Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
 
-        let bad_final_response = CorrectnessFinalResponse(Scalar::default());
+        let bad_final_response = CorrectnessFinalResponse::default();
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);
         assert_err!(
             result,

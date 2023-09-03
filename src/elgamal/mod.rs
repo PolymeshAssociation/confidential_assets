@@ -5,8 +5,7 @@
 
 use crate::{
     codec_wrapper::{
-        WrappedScalar,
-        RistrettoPointDecoder, RistrettoPointEncoder,
+        WrappedScalar, WrappedRistretto,
         RISTRETTO_POINT_SIZE,
     },
     errors::{Error, Result},
@@ -16,7 +15,7 @@ use crate::{
 use bulletproofs::PedersenGens;
 use core::ops::{Deref, Add, AddAssign, Sub, SubAssign};
 use curve25519_dalek::{
-    ristretto::{CompressedRistretto, RistrettoPoint},
+    ristretto::CompressedRistretto,
     scalar::Scalar,
 };
 use rand_core::{CryptoRng, RngCore};
@@ -25,7 +24,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, EncodeLike, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
@@ -63,34 +62,11 @@ impl CommitmentWitness {
 }
 
 /// Prover's representation of the encrypted secret.
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Encode, Decode, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherText {
-    pub x: RistrettoPoint,
-    pub y: RistrettoPoint,
-}
-
-impl Encode for CipherText {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.x).size_hint() + RistrettoPointEncoder(&self.y).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.x).encode_to(dest);
-        RistrettoPointEncoder(&self.y).encode_to(dest);
-    }
-}
-
-impl EncodeLike for CipherText {}
-
-impl Decode for CipherText {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let x = <RistrettoPointDecoder>::decode(input)?.0;
-        let y = <RistrettoPointDecoder>::decode(input)?.0;
-
-        Ok(CipherText { x, y })
-    }
+    pub x: WrappedRistretto,
+    pub y: WrappedRistretto,
 }
 
 impl TypeInfo for CipherText {
@@ -114,8 +90,8 @@ impl<'a, 'b> Add<&'b CipherText> for &'a CipherText {
 
     fn add(self, other: &'b CipherText) -> CipherText {
         CipherText {
-            x: self.x + other.x,
-            y: self.y + other.y,
+            x: (*self.x + *other.x).into(),
+            y: (*self.y + *other.y).into(),
         }
     }
 }
@@ -133,8 +109,8 @@ impl<'a, 'b> Sub<&'b CipherText> for &'a CipherText {
 
     fn sub(self, other: &'b CipherText) -> CipherText {
         CipherText {
-            x: self.x - other.x,
-            y: self.y - other.y,
+            x: (*self.x - *other.x).into(),
+            y: (*self.y - *other.y).into(),
         }
     }
 }
@@ -200,7 +176,7 @@ impl CompressedElgamalPublicKey {
         let compressed = CompressedRistretto(self.0);
         compressed
             .decompress()
-            .map(|pub_key| ElgamalPublicKey { pub_key })
+            .map(|pub_key| ElgamalPublicKey { pub_key: pub_key.into() })
     }
 }
 
@@ -217,18 +193,18 @@ impl From<ElgamalPublicKey> for CompressedElgamalPublicKey {
 }
 
 /// The Elgamal Public Key is the secret key multiplied by the blinding generator (g).
-#[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Encode, Decode, Default, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ElgamalPublicKey {
-    pub pub_key: RistrettoPoint,
+    pub pub_key: WrappedRistretto,
 }
 
 impl ElgamalPublicKey {
     fn encrypt_helper(&self, value: Scalar, blinding: Scalar) -> CipherText {
-        let x = blinding * self.pub_key;
+        let x = blinding * *self.pub_key;
         let gens = PedersenGens::default();
-        let y = gens.commit(value, blinding);
-        CipherText { x, y }
+        let y = gens.commit(value, blinding).into();
+        CipherText { x: x.into(), y }
     }
 
     pub fn encrypt(&self, witness: &CommitmentWitness) -> CipherText {
@@ -249,24 +225,6 @@ impl ElgamalPublicKey {
     }
 }
 
-impl Encode for ElgamalPublicKey {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.pub_key).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.pub_key).encode_to(dest);
-    }
-}
-
-impl Decode for ElgamalPublicKey {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let pub_key = <RistrettoPointDecoder>::decode(input)?.0;
-        Ok(ElgamalPublicKey { pub_key })
-    }
-}
-
 impl ElgamalSecretKey {
     pub fn new(secret: Scalar) -> Self {
         ElgamalSecretKey { secret: secret.into() }
@@ -275,7 +233,7 @@ impl ElgamalSecretKey {
     pub fn get_public_key(&self) -> ElgamalPublicKey {
         let gens = PedersenGens::default();
         ElgamalPublicKey {
-            pub_key: self.secret() * gens.B_blinding,
+            pub_key: (self.secret() * gens.B_blinding).into(),
         }
     }
 
@@ -283,7 +241,7 @@ impl ElgamalSecretKey {
     pub fn decrypt(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         // Brute force all possible values to find the one that matches value * h.
         let mut result = Scalar::zero() * gens.B;
         for v in 0..Balance::max_value() {
@@ -301,7 +259,7 @@ impl ElgamalSecretKey {
     pub fn decrypt_discrete_log(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         let discrete_log = discrete_log::DiscreteLog::new(gens.B);
         if let Some(v) = discrete_log.decode(value_h) {
             return Ok(v as Balance);
@@ -324,7 +282,7 @@ impl ElgamalSecretKey {
         }
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         let discrete_log = discrete_log::DiscreteLog::new(gens.B);
         let starting_point = value_h - Scalar::from(min) * gens.B;
         discrete_log
@@ -341,7 +299,7 @@ impl ElgamalSecretKey {
     ) -> Option<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         // Brute force all possible values to find the one that matches value * h.
         let mut result = Scalar::from(min) * gens.B;
         for v in min..max {
@@ -362,7 +320,7 @@ impl ElgamalSecretKey {
 
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
 
         const CHUNK_SIZE: Balance = 64 * 1024; // Needs to be a power of two.
         const CHUNK_COUNT: Balance = Balance::max_value() / CHUNK_SIZE;
@@ -413,7 +371,7 @@ impl ElgamalSecretKey {
     pub fn verify(&self, cipher_text: &CipherText, value: &Scalar) -> Result<()> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key.
-        let value_h = cipher_text.y - self.invert() * cipher_text.x;
+        let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         // Verify that the `value` and see if it matches `value * h`.
         if value * gens.B == value_h {
             return Ok(());
@@ -428,12 +386,12 @@ pub fn encrypt_using_two_pub_keys(
     pub_key1: ElgamalPublicKey,
     pub_key2: ElgamalPublicKey,
 ) -> (CipherText, CipherText) {
-    let x1 = witness.blinding * pub_key1.pub_key;
-    let x2 = witness.blinding * pub_key2.pub_key;
+    let x1 = witness.blinding * *pub_key1.pub_key;
+    let x2 = witness.blinding * *pub_key2.pub_key;
     let gens = PedersenGens::default();
-    let y = gens.commit(witness.value, witness.blinding);
-    let enc1 = CipherText { x: x1, y };
-    let enc2 = CipherText { x: x2, y };
+    let y = gens.commit(witness.value, witness.blinding).into();
+    let enc1 = CipherText { x: x1.into(), y };
+    let enc2 = CipherText { x: x2.into(), y };
 
     (enc1, enc2)
 }

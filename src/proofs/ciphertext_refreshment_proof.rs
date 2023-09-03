@@ -6,7 +6,7 @@
 //! whitepaper.
 
 use crate::{
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    codec_wrapper::{WrappedScalar, WrappedCompressedRistretto},
     elgamal::{CipherText, ElgamalPublicKey, ElgamalSecretKey},
     errors::{Error, Result},
     proofs::{
@@ -28,7 +28,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 
 /// The domain label for the ciphertext refreshment proof.
 pub const CIPHERTEXT_REFRESHMENT_FINAL_RESPONSE_LABEL: &[u8] =
@@ -42,64 +42,24 @@ pub const CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL: &[u8] =
 // public key
 // ------------------------------------------------------------------------
 
-#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CipherTextRefreshmentFinalResponse(Scalar);
+pub struct CipherTextRefreshmentFinalResponse(WrappedScalar);
 
-impl Encode for CipherTextRefreshmentFinalResponse {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.0).size_hint()
-    }
-
-    #[inline]
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.0).encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextRefreshmentFinalResponse {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let inner = <ScalarDecoder>::decode(input)?.0;
-        Ok(CipherTextRefreshmentFinalResponse(inner))
-    }
-}
-
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextRefreshmentInitialMessage {
-    a: RistrettoPoint,
-    b: RistrettoPoint,
+    a: WrappedCompressedRistretto,
+    b: WrappedCompressedRistretto,
 }
 
 /// A default implementation used for testing.
 impl Default for CipherTextRefreshmentInitialMessage {
     fn default() -> Self {
         CipherTextRefreshmentInitialMessage {
-            a: RISTRETTO_BASEPOINT_POINT,
-            b: RISTRETTO_BASEPOINT_POINT,
+            a: RISTRETTO_BASEPOINT_POINT.into(),
+            b: RISTRETTO_BASEPOINT_POINT.into(),
         }
-    }
-}
-
-impl Encode for CipherTextRefreshmentInitialMessage {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.a).size_hint() + RistrettoPointEncoder(&self.b).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.a).encode_to(dest);
-        RistrettoPointEncoder(&self.b).encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextRefreshmentInitialMessage {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let a = <RistrettoPointDecoder>::decode(input)?.0;
-        let b = <RistrettoPointDecoder>::decode(input)?.0;
-
-        Ok(CipherTextRefreshmentInitialMessage { a, b })
     }
 }
 
@@ -136,7 +96,7 @@ impl<'a> CipherTextRefreshmentProverAwaitingChallenge<'a> {
     ) -> Self {
         CipherTextRefreshmentProverAwaitingChallenge {
             secret_key,
-            y: ciphertext1.y - ciphertext2.y,
+            y: *ciphertext1.y - *ciphertext2.y,
             pc_gens: gens,
         }
     }
@@ -174,8 +134,8 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
         let rand_commitment = Scalar::random(rng);
 
         let initial_message = CipherTextRefreshmentInitialMessage {
-            a: rand_commitment * self.y,
-            b: rand_commitment * self.pc_gens.B_blinding,
+            a: (rand_commitment * self.y).into(),
+            b: (rand_commitment * self.pc_gens.B_blinding).into(),
         };
 
         let prover = CipherTextRefreshmentProver {
@@ -188,7 +148,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
 
 impl ProofProver<CipherTextRefreshmentFinalResponse> for CipherTextRefreshmentProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CipherTextRefreshmentFinalResponse {
-        CipherTextRefreshmentFinalResponse(self.u + c.x() * self.secret_key)
+        CipherTextRefreshmentFinalResponse((self.u + c.x() * self.secret_key).into())
     }
 }
 
@@ -215,8 +175,8 @@ impl<'a> CipherTextRefreshmentVerifier<'a> {
     ) -> Self {
         CipherTextRefreshmentVerifier {
             pub_key,
-            x: ciphertext1.x - ciphertext2.x,
-            y: ciphertext1.y - ciphertext2.y,
+            x: *ciphertext1.x - *ciphertext2.x,
+            y: *ciphertext1.y - *ciphertext2.y,
             pc_gens: gens,
         }
     }
@@ -232,13 +192,16 @@ impl<'a> ProofVerifier for CipherTextRefreshmentVerifier<'a> {
         initial_message: &Self::ZKInitialMessage,
         z: &Self::ZKFinalResponse,
     ) -> Result<()> {
+        let z = *z.0;
+        let a = initial_message.a.decompress();
+        let b = initial_message.b.decompress();
         ensure!(
-            z.0 * self.y == initial_message.a + challenge.x() * self.x,
+            z * self.y == a + challenge.x() * self.x,
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
         ensure!(
-            z.0 * self.pc_gens.B_blinding
-                == initial_message.b + challenge.x() * self.pub_key.pub_key,
+            z * self.pc_gens.B_blinding
+                == b + challenge.x() * *self.pub_key.pub_key,
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 2 }
         );
         Ok(())
@@ -301,7 +264,7 @@ mod tests {
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
 
-        let bad_final_response = CipherTextRefreshmentFinalResponse(Scalar::default());
+        let bad_final_response = CipherTextRefreshmentFinalResponse(Default::default());
         assert_err!(
             verifier.verify(&challenge, &initial_message, &bad_final_response),
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }

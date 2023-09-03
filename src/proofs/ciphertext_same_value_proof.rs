@@ -2,7 +2,7 @@
 //! under different public keys.
 
 use crate::{
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    codec_wrapper::{WrappedCompressedRistretto, WrappedScalar},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{Error, Result},
     proofs::{
@@ -16,7 +16,7 @@ use crate::{
 
 use bulletproofs::PedersenGens;
 use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, ristretto::RistrettoPoint, scalar::Scalar,
+    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
 };
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
@@ -24,7 +24,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 
 /// The domain label for the encrypting the same value proof.
 pub const CIPHERTEXT_SAME_VALUE_PROOF_FINAL_RESPONSE_LABEL: &[u8] =
@@ -38,71 +38,26 @@ pub const CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL: &[u8] =
 // Public Keys
 // ------------------------------------------------------------------------
 
-#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextSameValueFinalResponse {
-    z1: Scalar,
-    z2: Scalar,
+    z1: WrappedScalar,
+    z2: WrappedScalar,
 }
 
-impl Encode for CipherTextSameValueFinalResponse {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.z1).size_hint() + ScalarEncoder(&self.z2).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.z1).encode_to(dest);
-        ScalarEncoder(&self.z2).encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextSameValueFinalResponse {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let z1 = <ScalarDecoder>::decode(input)?.0;
-        let z2 = <ScalarDecoder>::decode(input)?.0;
-
-        Ok(CipherTextSameValueFinalResponse { z1, z2 })
-    }
-}
-
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextSameValueInitialMessage {
-    a: Vec<RistrettoPoint>,
-    b: RistrettoPoint,
-}
-
-impl Encode for CipherTextSameValueInitialMessage {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        let a = self.a.iter().map(|a| RistrettoPointEncoder(a)).collect::<Vec<_>>();
-        a.size_hint()
-            + RistrettoPointEncoder(&self.b).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        let a = self.a.iter().map(|a| RistrettoPointEncoder(a)).collect::<Vec<_>>();
-        a.encode_to(dest);
-        RistrettoPointEncoder(&self.b).encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextSameValueInitialMessage {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let a = <Vec<RistrettoPointDecoder>>::decode(input)?.into_iter().map(|r| r.0).collect();
-        let b = <RistrettoPointDecoder>::decode(input)?.0;
-
-        Ok(CipherTextSameValueInitialMessage { a, b })
-    }
+    a: Vec<WrappedCompressedRistretto>,
+    b: WrappedCompressedRistretto,
 }
 
 /// A default implementation used for testing.
 impl Default for CipherTextSameValueInitialMessage {
     fn default() -> Self {
         CipherTextSameValueInitialMessage {
-            a: vec![RISTRETTO_BASEPOINT_POINT],
-            b: RISTRETTO_BASEPOINT_POINT,
+            a: vec![RISTRETTO_BASEPOINT_POINT.into()],
+            b: RISTRETTO_BASEPOINT_POINT.into(),
         }
     }
 }
@@ -166,7 +121,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
         let rand_commitment1 = Scalar::random(rng);
         let rand_commitment2 = Scalar::random(rng);
 
-        let a = self.keys.iter().map(|key| rand_commitment1 * key.pub_key).collect();
+        let a = self.keys.iter().map(|key| (rand_commitment1 * *key.pub_key).into()).collect();
 
         (
             CipherTextSameValueProver {
@@ -176,7 +131,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
             },
             CipherTextSameValueInitialMessage {
                 a,
-                b: rand_commitment1 * self.pc_gens.B_blinding + rand_commitment2 * self.pc_gens.B,
+                b: (rand_commitment1 * self.pc_gens.B_blinding + rand_commitment2 * self.pc_gens.B).into(),
             },
         )
     }
@@ -185,8 +140,8 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
 impl ProofProver<CipherTextSameValueFinalResponse> for CipherTextSameValueProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CipherTextSameValueFinalResponse {
         CipherTextSameValueFinalResponse {
-            z1: self.u1 + c.x() * self.w.blinding(),
-            z2: self.u2 + c.x() * self.w.value(),
+            z1: (self.u1 + c.x() * self.w.blinding()).into(),
+            z2: (self.u2 + c.x() * self.w.value()).into(),
         }
     }
 }
@@ -221,21 +176,25 @@ impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
         ensure!(len == initial_message.a.len(), Error::VerificationError);
 
         // Get the `y` value from the first ciphertext.
-        let first_y = self.ciphertexts[0].y;
+        let first_y = *self.ciphertexts[0].y;
 
+        let z1 = *final_response.z1;
+        let z2 = *final_response.z2;
+        let b = initial_message.b.decompress();
         ensure!(
-            final_response.z1 * self.pc_gens.B_blinding + final_response.z2 * self.pc_gens.B
-                == initial_message.b + challenge.x() * first_y,
+            z1 * self.pc_gens.B_blinding + z2 * self.pc_gens.B
+                == b + challenge.x() * first_y,
             Error::CiphertextSameValueFinalResponseVerificationError { check: 0 }
         );
 
         for ((key, cipher), a) in self.keys.iter().zip(self.ciphertexts.iter()).zip(initial_message.a.iter()) {
+            let a = a.decompress();
             // The ciphertext that encrypt the same witness must have the same Y value.
-            ensure!(first_y == cipher.y, Error::VerificationError);
+            ensure!(first_y == *cipher.y, Error::VerificationError);
 
             ensure!(
-                final_response.z1 * key.pub_key
-                    == a + challenge.x() * cipher.x,
+                z1 * *key.pub_key
+                    == a + challenge.x() * *cipher.x,
                 Error::CiphertextSameValueFinalResponseVerificationError { check: 1 }
             );
         }

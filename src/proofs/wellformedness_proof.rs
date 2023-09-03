@@ -3,7 +3,7 @@
 //! For more details see section 5.1 of the whitepaper.
 
 use crate::{
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder},
+    codec_wrapper::{WrappedScalar, WrappedCompressedRistretto},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{Error, Result},
     proofs::{
@@ -17,82 +17,41 @@ use crate::{
 
 use bulletproofs::PedersenGens;
 use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, ristretto::RistrettoPoint, scalar::Scalar,
+    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
 };
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 
 /// The domain label for the wellformedness proof.
 pub const WELLFORMEDNESS_PROOF_FINAL_RESPONSE_LABEL: &[u8] = b"PolymeshWellformednessFinalResponse";
 /// The domain label for the challenge.
 pub const WELLFORMEDNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshWellformednessProofChallenge";
 
-#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WellformednessFinalResponse {
-    z1: Scalar,
-    z2: Scalar,
+    z1: WrappedScalar,
+    z2: WrappedScalar,
 }
 
-impl Encode for WellformednessFinalResponse {
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.z1).size_hint() + ScalarEncoder(&self.z2).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.z1).encode_to(dest);
-        ScalarEncoder(&self.z2).encode_to(dest);
-    }
-}
-
-impl Decode for WellformednessFinalResponse {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let z1 = <ScalarDecoder>::decode(input)?.0;
-        let z2 = <ScalarDecoder>::decode(input)?.0;
-
-        Ok(WellformednessFinalResponse { z1, z2 })
-    }
-}
-
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WellformednessInitialMessage {
-    a: RistrettoPoint,
-    b: RistrettoPoint,
+    a: WrappedCompressedRistretto,
+    b: WrappedCompressedRistretto,
 }
 
 /// A default implementation used for testing.
 impl Default for WellformednessInitialMessage {
     fn default() -> Self {
         WellformednessInitialMessage {
-            a: RISTRETTO_BASEPOINT_POINT,
-            b: RISTRETTO_BASEPOINT_POINT,
+            a: RISTRETTO_BASEPOINT_POINT.into(),
+            b: RISTRETTO_BASEPOINT_POINT.into(),
         }
-    }
-}
-
-impl Encode for WellformednessInitialMessage {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.a).size_hint() + RistrettoPointEncoder(&self.b).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.a).encode_to(dest);
-        RistrettoPointEncoder(&self.b).encode_to(dest);
-    }
-}
-
-impl Decode for WellformednessInitialMessage {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let a = <RistrettoPointDecoder>::decode(input)?.0;
-        let b = <RistrettoPointDecoder>::decode(input)?.0;
-
-        Ok(WellformednessInitialMessage { a, b })
     }
 }
 
@@ -156,8 +115,8 @@ impl<'a> ProofProverAwaitingChallenge for WellformednessProverAwaitingChallenge<
                 rand_b,
             },
             WellformednessInitialMessage {
-                a: rand_a * self.pub_key.pub_key,
-                b: rand_a * self.pc_gens.B_blinding + rand_b * self.pc_gens.B,
+                a: (rand_a * *self.pub_key.pub_key).into(),
+                b: (rand_a * self.pc_gens.B_blinding + rand_b * self.pc_gens.B).into(),
             },
         )
     }
@@ -166,8 +125,8 @@ impl<'a> ProofProverAwaitingChallenge for WellformednessProverAwaitingChallenge<
 impl ProofProver<WellformednessFinalResponse> for WellformednessProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> WellformednessFinalResponse {
         WellformednessFinalResponse {
-            z1: self.rand_a + c.x() * self.w.blinding(),
-            z2: self.rand_b + c.x() * self.w.value(),
+            z1: (self.rand_a + c.x() * self.w.blinding()).into(),
+            z2: (self.rand_b + c.x() * self.w.value()).into(),
         }
     }
 }
@@ -189,13 +148,17 @@ impl<'a> ProofVerifier for WellformednessVerifier<'a> {
         initial_message: &Self::ZKInitialMessage,
         response: &Self::ZKFinalResponse,
     ) -> Result<()> {
+        let z1 = *response.z1;
+        let z2 = *response.z2;
+        let a = initial_message.a.decompress();
+        let b = initial_message.b.decompress();
         ensure!(
-            response.z1 * self.pub_key.pub_key == initial_message.a + challenge.x() * self.cipher.x,
+            z1 * *self.pub_key.pub_key == a + challenge.x() * *self.cipher.x,
             Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
         ensure!(
-            response.z1 * self.pc_gens.B_blinding + response.z2 * self.pc_gens.B
-                == initial_message.b + challenge.x() * self.cipher.y,
+            z1 * self.pc_gens.B_blinding + z2 * self.pc_gens.B
+                == b + challenge.x() * *self.cipher.y,
             Error::WellformednessFinalResponseVerificationError { check: 2 }
         );
         Ok(())
@@ -271,10 +234,7 @@ mod tests {
             Error::WellformednessFinalResponseVerificationError { check: 1 }
         );
 
-        let bad_final_response = WellformednessFinalResponse {
-            z1: Scalar::default(),
-            z2: Scalar::default(),
-        };
+        let bad_final_response = WellformednessFinalResponse::default();
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);
         assert_err!(
             result,

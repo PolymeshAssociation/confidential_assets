@@ -20,7 +20,7 @@ pub const SCALAR_SIZE: usize = 32;
 /// Wrapper for `RistrettoPoint` to implement SCALE encoding.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct WrappedRistretto(pub CompressedRistretto);
+pub struct WrappedRistretto(RistrettoPoint);
 
 impl Encode for WrappedRistretto {
     #[inline]
@@ -30,17 +30,17 @@ impl Encode for WrappedRistretto {
 
     /// Encodes itself as an array of bytes.
     fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.as_bytes().encode_to(dest);
+        self.0.compress().as_bytes().encode_to(dest);
     }
 }
 
 impl Decode for WrappedRistretto {
-    /// Decodes a `CompressedRistretto` from an array of bytes.
+    /// Decodes a `Ristretto` from an array of bytes.
     fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
         let id = <[u8; RISTRETTO_POINT_SIZE]>::decode(input)?;
-        let inner = CompressedRistretto(id);
+        let compressed = CompressedRistretto(id);
 
-        inner
+        let inner = compressed
             .decompress()
             .ok_or_else(|| CodecError::from("Invalid `CompressedRistretto`."))?;
 
@@ -50,13 +50,12 @@ impl Decode for WrappedRistretto {
 
 impl From<WrappedRistretto> for RistrettoPoint {
     fn from(data: WrappedRistretto) -> Self {
-        // The compressed RistrettoPoint is valided in the SCALE `decode` method.
-        data.decompress().unwrap_or_default()
+        data.0
     }
 }
 
 impl Deref for WrappedRistretto {
-    type Target = CompressedRistretto;
+    type Target = RistrettoPoint;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -70,13 +69,81 @@ impl DerefMut for WrappedRistretto {
 
 impl From<RistrettoPoint> for WrappedRistretto {
     fn from(data: RistrettoPoint) -> Self {
+        Self(data)
+    }
+}
+
+/// Wrapper for `CompressedRistretto` to implement SCALE encoding.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct WrappedCompressedRistretto(CompressedRistretto);
+
+impl Encode for WrappedCompressedRistretto {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        RISTRETTO_POINT_SIZE
+    }
+
+    /// Encodes itself as an array of bytes.
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        self.0.as_bytes().encode_to(dest);
+    }
+}
+
+impl Decode for WrappedCompressedRistretto {
+    /// Decodes a `CompressedRistretto` from an array of bytes.
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let id = <[u8; RISTRETTO_POINT_SIZE]>::decode(input)?;
+        let inner = CompressedRistretto(id);
+
+        // Ensure the it is a valid RistrettoPoint.
+        inner
+            .decompress()
+            .ok_or_else(|| CodecError::from("Invalid `CompressedRistretto`."))?;
+
+        Ok(Self(inner))
+    }
+}
+
+impl From<WrappedCompressedRistretto> for RistrettoPoint {
+    fn from(data: WrappedCompressedRistretto) -> Self {
+        data.decompress()
+    }
+}
+
+impl Deref for WrappedCompressedRistretto {
+    type Target = CompressedRistretto;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for WrappedCompressedRistretto {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<RistrettoPoint> for WrappedCompressedRistretto {
+    fn from(data: RistrettoPoint) -> Self {
         Self(data.compress())
     }
 }
 
-impl WrappedRistretto {
-    pub fn decompress(&self) -> Option<RistrettoPoint> {
-        self.0.decompress()
+impl From<CompressedRistretto> for WrappedCompressedRistretto {
+    fn from(data: CompressedRistretto) -> Self {
+        Self(data)
+    }
+}
+
+impl WrappedCompressedRistretto {
+    pub fn decompress(&self) -> RistrettoPoint {
+        // The compressed RistrettoPoint is valided in the SCALE `decode` method.
+        self.0.decompress().unwrap_or_default()
+    }
+
+    pub fn compress(&self) -> CompressedRistretto {
+        self.0
     }
 }
 
@@ -133,96 +200,6 @@ impl From<Scalar> for WrappedScalar {
     }
 }
 
-/// Adds support to `Encode` of SCALE codec to `RistrettoPoint` type.
-pub struct RistrettoPointEncoder<'a>(pub &'a RistrettoPoint);
-
-impl<'a> Encode for RistrettoPointEncoder<'a> {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RISTRETTO_POINT_SIZE
-    }
-
-    /// Compresses the `RistrettoPoint` and encodes it as an array of bytes.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.compress().as_bytes().encode_to(dest);
-    }
-}
-
-/// Adds support to `Decode` of SCALE codec's to `RistrettoPoint` type.
-pub struct RistrettoPointDecoder(pub RistrettoPoint);
-
-impl Decode for RistrettoPointDecoder {
-    /// Decodes a compressed `RistrettoPoint` from an array of bytes.
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let id = <[u8; RISTRETTO_POINT_SIZE]>::decode(input)?;
-        let inner = CompressedRistretto(id)
-            .decompress()
-            .ok_or_else(|| CodecError::from("Invalid compressed `RistrettoPoint`."))?;
-
-        Ok(Self(inner))
-    }
-}
-
-/// Adds support to `Encode` of SCALE codec to `CompressedRistretto` type.
-pub struct CompressedRistrettoEncoder<'a>(pub &'a CompressedRistretto);
-
-impl<'a> Encode for CompressedRistrettoEncoder<'a> {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RISTRETTO_POINT_SIZE
-    }
-
-    /// Encodes itself as an array of bytes.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.as_bytes().encode_to(dest);
-    }
-}
-
-/// Adds support to `Decode` of SCALE codec's to `CompressedRistretto` type.
-pub struct CompressedRistrettoDecoder(pub CompressedRistretto);
-
-impl Decode for CompressedRistrettoDecoder {
-    /// Decodes a `CompressedRistretto` from an array of bytes.
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let id = <[u8; RISTRETTO_POINT_SIZE]>::decode(input)?;
-        let inner = CompressedRistretto(id);
-
-        let _ = inner
-            .decompress()
-            .ok_or_else(|| CodecError::from("Invalid `CompressedRistretto`."))?;
-
-        Ok(Self(inner))
-    }
-}
-
-/// Adds support to `Encode` of SCALE codec to `Scalar` type.
-pub struct ScalarEncoder<'a>(pub &'a Scalar);
-
-impl<'a> Encode for ScalarEncoder<'a> {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        SCALAR_SIZE
-    }
-
-    /// Encodes itself as an array of bytes.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.as_bytes().encode_to(dest);
-    }
-}
-
-/// Adds support to `Decode` of SCALE codec's to `Scalar` type.
-pub struct ScalarDecoder(pub Scalar);
-
-impl Decode for ScalarDecoder {
-    /// Decodes a `Scalar` from an array of bytes.
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let raw = <[u8; SCALAR_SIZE]>::decode(input)?;
-        let inner = Scalar::from_bits(raw);
-
-        Ok(Self(inner))
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -230,18 +207,19 @@ mod test {
     use rand::thread_rng;
     use sha3::Sha3_512;
 
-    /// Test encode wrapper `$encoder` and decode wrapper `$decoder` using `data` as input.
+    /// Test encode wrapper `$wrapper` using `data` as input.
     /// The input `data` is a list of tuples, where first element is the object to encode, and the
     /// second is the expected value of the encoded object.
     macro_rules! test_codec_wrapper {
-        ($encoder:ident, $decoder:ty, $data:expr) => {
-            for (input, expected) in $data.iter() {
-                let mut encoded = $encoder(input).encode();
+        ($wrapper:ident, $data:expr) => {
+            for (input, expected) in $data.into_iter() {
+                let wrapped: $wrapper = input.into();
+                let mut encoded = wrapped.encode();
                 assert_eq!(encoded, *expected);
 
                 let mut encoded_slice: &[u8] = encoded.as_mut_slice();
-                let decoded = <$decoder>::decode(&mut encoded_slice)?;
-                assert_eq!(&decoded.0, input);
+                let decoded = <$wrapper>::decode(&mut encoded_slice)?;
+                assert_eq!(decoded, wrapped);
             }
         };
     }
@@ -261,7 +239,7 @@ mod test {
             ),
         ];
 
-        test_codec_wrapper!(RistrettoPointEncoder, RistrettoPointDecoder, data);
+        test_codec_wrapper!(WrappedRistretto, data);
 
         Ok(())
     }
@@ -281,7 +259,7 @@ mod test {
             ),
         ];
 
-        test_codec_wrapper!(CompressedRistrettoEncoder, CompressedRistrettoDecoder, data);
+        test_codec_wrapper!(WrappedCompressedRistretto, data);
         Ok(())
     }
 
@@ -300,7 +278,7 @@ mod test {
             ),
         ];
 
-        test_codec_wrapper!(ScalarEncoder, ScalarDecoder, data);
+        test_codec_wrapper!(WrappedScalar, data);
         Ok(())
     }
 

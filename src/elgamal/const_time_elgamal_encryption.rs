@@ -32,47 +32,22 @@ use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Decode, Encode};
 use sha3::{digest::FixedOutput, Digest, Sha3_256};
 use sp_std::prelude::*;
 
 use crate::{
-    codec_wrapper::{RistrettoPointDecoder, RistrettoPointEncoder},
+    codec_wrapper::WrappedCompressedRistretto,
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey, ElgamalSecretKey},
     errors::Result,
     Balance,
 };
 
-#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextHint {
-    y: RistrettoPoint,
+    y: WrappedCompressedRistretto,
     z: [u8; 32],
-}
-
-impl Encode for CipherTextHint {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RistrettoPointEncoder(&self.y).size_hint()
-            + self.z.size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        RistrettoPointEncoder(&self.y).encode_to(dest);
-        self.z.encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextHint {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let y = <RistrettoPointDecoder>::decode(input)?.0;
-        let z = <[u8; 32]>::decode(input)?;
-
-        Ok(CipherTextHint {
-            y,
-            z,
-        })
-    }
 }
 
 impl CipherTextHint {
@@ -89,7 +64,7 @@ impl CipherTextHint {
         let gens = PedersenGens::default();
         let r2h = r2 * gens.B;
 
-        let y = gens.commit(r2, r1); // r1 * g + r2 * h
+        let y = gens.commit(r2, r1).into(); // r1 * g + r2 * h
         let z = xor_with_one_time_pad(r2h, &message_bytes);
 
         Self {
@@ -103,7 +78,7 @@ impl CipherTextHint {
     /// `x` - `ciphertext.x / secret_key`
     pub fn decrypt(&self, x: RistrettoPoint) -> u64 {
         // random_2 * h = Y - X / secret_key
-        let random_2_h = self.y - x;
+        let random_2_h = self.y.decompress() - x;
 
         use byteorder::{ByteOrder, LittleEndian};
 
@@ -126,38 +101,13 @@ impl CipherTextHint {
 /// Note that we can not only rely on regular Elgamal encryption since
 /// 1. it is not homomorphic. 2. all asset proofs prove properties of
 /// a twisted Elgamal cipher text.
-#[derive(PartialEq, Copy, Clone, Default, Debug)]
+#[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextWithHint {
     // The twisted Elgamal cipher text.
     cipher: CipherText,
 
     hint: CipherTextHint,
-}
-
-impl Encode for CipherTextWithHint {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        self.cipher.size_hint()
-            + self.hint.size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.cipher.encode_to(dest);
-        self.hint.encode_to(dest);
-    }
-}
-
-impl Decode for CipherTextWithHint {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let cipher = CipherText::decode(input)?;
-        let hint = CipherTextHint::decode(input)?;
-
-        Ok(CipherTextWithHint {
-            cipher,
-            hint,
-        })
-    }
 }
 
 impl CipherTextWithHint {
@@ -210,7 +160,7 @@ impl ElgamalPublicKey {
 impl ElgamalSecretKey {
     /// Decrypt a cipher text that is known to encrypt a `Balance`.
     pub fn const_time_decrypt(&self, cipher_text: &CipherTextWithHint) -> Result<Balance> {
-        let decrypted_value = cipher_text.hint.decrypt(self.invert() * cipher_text.cipher.x);
+        let decrypted_value = cipher_text.hint.decrypt(self.invert() * *cipher_text.cipher.x);
 
         // Verify that the same value was encrypted using twisted Elgamal encryption.
         self.verify(&cipher_text.cipher, &decrypted_value.into())?;
