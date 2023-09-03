@@ -29,7 +29,7 @@ use rand_core::{CryptoRng, RngCore};
 use codec::{Decode, Encode};
 use sp_std::collections::btree_map::BTreeMap;
 
-pub const MAX_AUDITORS: usize = 10;
+pub const MAX_AUDITORS: usize = 4;
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
@@ -55,6 +55,10 @@ pub struct ConfidentialTransferProof {
     /// ZK-proof that all encrypted transaction amounts in `amounts` is the same value.
     pub amount_equal_cipher_proof: CipherTextSameValueProof,
     /// The sender's balance re-encrypted using a new blinding.
+    ///
+    /// This encrypted value is needed for the "Enough funds" range proof, because the
+    /// blinding value needs to be known and we don't want the users to have to keep
+    /// an updated copy of the blinding value.
     pub refreshed_enc_balance: CipherText,
     /// ZK-proof that `refreshed_enc_balance` encrypts the same value as the sender's balance.
     pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
@@ -196,6 +200,10 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
+        ensure!(
+            self.auditors.len() <= MAX_AUDITORS,
+            Error::TooManyAuditors
+        );
         ensure!(
             self.auditors.len() == auditors_enc_pub_keys.len(),
             Error::AuditorPayloadError
