@@ -201,7 +201,6 @@ pub mod encryption_proofs;
 
 pub mod ciphertext_refreshment_proof;
 pub mod correctness_proof;
-pub mod encrypting_same_value_proof;
 pub mod ciphertext_same_value_proof;
 pub mod range_proof;
 pub mod transcript;

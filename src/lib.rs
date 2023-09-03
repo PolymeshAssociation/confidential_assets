@@ -31,7 +31,7 @@ pub use elgamal::{
 pub use errors::{Error, Result};
 pub use proofs::{
     ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,
-    encrypting_same_value_proof::CipherEqualDifferentPubKeyProof, range_proof::InRangeProof,
+    range_proof::InRangeProof,
     wellformedness_proof::WellformednessProof,
 };
 
