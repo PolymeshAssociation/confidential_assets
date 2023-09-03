@@ -6,13 +6,12 @@
 //! whitepaper.
 
 use crate::{
-    codec_wrapper::{WrappedScalar, WrappedCompressedRistretto},
+    codec_wrapper::{WrappedCompressedRistretto, WrappedScalar},
     elgamal::{CipherText, ElgamalPublicKey, ElgamalSecretKey},
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
-            ZKProofResponse,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge, ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
@@ -200,8 +199,7 @@ impl<'a> ProofVerifier for CipherTextRefreshmentVerifier<'a> {
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
         ensure!(
-            z * self.pc_gens.B_blinding
-                == b + challenge.x() * *self.pub_key.pub_key,
+            z * self.pc_gens.B_blinding == b + challenge.x() * *self.pub_key.pub_key,
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 2 }
         );
         Ok(())

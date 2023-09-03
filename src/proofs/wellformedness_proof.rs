@@ -3,22 +3,19 @@
 //! For more details see section 5.1 of the whitepaper.
 
 use crate::{
-    codec_wrapper::{WrappedScalar, WrappedCompressedRistretto},
+    codec_wrapper::{WrappedCompressedRistretto, WrappedScalar},
     elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
-            ZKProofResponse,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge, ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
 };
 
 use bulletproofs::PedersenGens;
-use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
-};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]

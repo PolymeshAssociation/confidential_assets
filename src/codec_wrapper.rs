@@ -1,5 +1,5 @@
-use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
 use bulletproofs::RangeProof;
+use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
 use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
@@ -7,9 +7,7 @@ use curve25519_dalek::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use core::ops::{
-    Deref, DerefMut,
-};
+use core::ops::{Deref, DerefMut};
 
 use crate::InRangeProof;
 

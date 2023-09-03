@@ -51,10 +51,7 @@ pub struct CipherTextHint {
 }
 
 impl CipherTextHint {
-    pub fn new<R: RngCore + CryptoRng>(
-        witness: &CommitmentWitness,
-        rng: &mut R,
-    ) -> Self {
+    pub fn new<R: RngCore + CryptoRng>(witness: &CommitmentWitness, rng: &mut R) -> Self {
         // Twisted Elgamal encryption.
         let r1 = witness.blinding();
 
@@ -67,10 +64,7 @@ impl CipherTextHint {
         let y = gens.commit(r2, r1).into(); // r1 * g + r2 * h
         let z = xor_with_one_time_pad(r2h, &message_bytes);
 
-        Self {
-            y,
-            z,
-        }
+        Self { y, z }
     }
 
     /// Decrypt the value hint.
@@ -160,7 +154,9 @@ impl ElgamalPublicKey {
 impl ElgamalSecretKey {
     /// Decrypt a cipher text that is known to encrypt a `Balance`.
     pub fn const_time_decrypt(&self, cipher_text: &CipherTextWithHint) -> Result<Balance> {
-        let decrypted_value = cipher_text.hint.decrypt(self.invert() * *cipher_text.cipher.x);
+        let decrypted_value = cipher_text
+            .hint
+            .decrypt(self.invert() * *cipher_text.cipher.x);
 
         // Verify that the same value was encrypted using twisted Elgamal encryption.
         self.verify(&cipher_text.cipher, &decrypted_value.into())?;

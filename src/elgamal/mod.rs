@@ -4,20 +4,14 @@
 //! addition and subtraction API over the cipher texts.
 
 use crate::{
-    codec_wrapper::{
-        WrappedScalar, WrappedRistretto,
-        RISTRETTO_POINT_SIZE,
-    },
+    codec_wrapper::{WrappedRistretto, WrappedScalar, RISTRETTO_POINT_SIZE},
     errors::{Error, Result},
     Balance,
 };
 
 use bulletproofs::PedersenGens;
-use core::ops::{Deref, Add, AddAssign, Sub, SubAssign};
-use curve25519_dalek::{
-    ristretto::CompressedRistretto,
-    scalar::Scalar,
-};
+use core::ops::{Add, AddAssign, Deref, Sub, SubAssign};
+use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
 #[cfg(feature = "serde")]
@@ -28,10 +22,10 @@ use codec::{Decode, Encode};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
-pub mod multi_key;
 pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
+pub mod multi_key;
 pub use const_time_elgamal_encryption::{CipherTextHint, CipherTextWithHint};
 
 /// Prover's representation of the commitment secret.
@@ -151,10 +145,10 @@ pub struct ElgamalSecretKey {
 }
 
 impl Deref for ElgamalSecretKey {
-  type Target = Scalar;
-  fn deref(&self) -> &Self::Target {
-      &self.secret
-  }
+    type Target = Scalar;
+    fn deref(&self) -> &Self::Target {
+        &self.secret
+    }
 }
 
 impl ElgamalSecretKey {
@@ -174,9 +168,9 @@ impl CompressedElgamalPublicKey {
 
     pub fn into_public_key(&self) -> Option<ElgamalPublicKey> {
         let compressed = CompressedRistretto(self.0);
-        compressed
-            .decompress()
-            .map(|pub_key| ElgamalPublicKey { pub_key: pub_key.into() })
+        compressed.decompress().map(|pub_key| ElgamalPublicKey {
+            pub_key: pub_key.into(),
+        })
     }
 }
 
@@ -227,7 +221,9 @@ impl ElgamalPublicKey {
 
 impl ElgamalSecretKey {
     pub fn new(secret: Scalar) -> Self {
-        ElgamalSecretKey { secret: secret.into() }
+        ElgamalSecretKey {
+            secret: secret.into(),
+        }
     }
 
     pub fn get_public_key(&self) -> ElgamalPublicKey {

@@ -1,28 +1,24 @@
 use crate::{
     elgamal::{
         multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-        CipherText, CipherTextHint, CommitmentWitness,
-        ElgamalPublicKey,
+        CipherText, CipherTextHint, CommitmentWitness, ElgamalPublicKey,
     },
     errors::{Error, Result},
     proofs::{
         bulletproofs::PedersenGens,
         ciphertext_refreshment_proof::{
-            CipherTextRefreshmentProverAwaitingChallenge, CipherTextRefreshmentVerifier,
-            CipherEqualSamePubKeyProof,
+            CipherEqualSamePubKeyProof, CipherTextRefreshmentProverAwaitingChallenge,
+            CipherTextRefreshmentVerifier,
         },
         ciphertext_same_value_proof::{
-            CipherTextSameValueProof,
-            CipherTextSameValueProverAwaitingChallenge, CipherTextSameValueVerifier,
+            CipherTextSameValueProof, CipherTextSameValueProverAwaitingChallenge,
+            CipherTextSameValueVerifier,
         },
         encryption_proofs::single_property_prover,
         encryption_proofs::single_property_verifier,
         range_proof::InRangeProof,
     },
-    ElgamalKeys,
-    Balance,
-    Scalar,
-    BALANCE_RANGE,
+    Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
 };
 
 #[cfg(feature = "serde")]
@@ -31,9 +27,7 @@ use serde::{Deserialize, Serialize};
 use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
-use sp_std::{
-  collections::btree_map::BTreeMap,
-};
+use sp_std::collections::btree_map::BTreeMap;
 
 pub const MAX_AUDITORS: usize = 10;
 
@@ -76,7 +70,10 @@ impl ConfidentialTransferProof {
         receiver_key: &ElgamalPublicKey,
         auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
     ) -> Result<Vec<ElgamalPublicKey>> {
-        ensure!(auditors_enc_pub_keys.len() <= MAX_AUDITORS, Error::TooManyAuditors);
+        ensure!(
+            auditors_enc_pub_keys.len() <= MAX_AUDITORS,
+            Error::TooManyAuditors
+        );
         // All public keys.
         let mut keys = Vec::with_capacity(auditors_enc_pub_keys.len() + 2);
         keys.push(*sender_key);
@@ -107,11 +104,14 @@ impl ConfidentialTransferProof {
             }
         );
         // Verify the sender's balance.
-        sender_account
-            .verify(sender_init_balance, &sender_balance.into())?;
+        sender_account.verify(sender_init_balance, &sender_balance.into())?;
 
         // All public keys.
-        let keys = Self::keys(&sender_account.public, receiver_pub_key, auditors_enc_pub_keys)?;
+        let keys = Self::keys(
+            &sender_account.public,
+            receiver_pub_key,
+            auditors_enc_pub_keys,
+        )?;
 
         // CommitmentWitness for transaction amount.
         let witness = CommitmentWitness::new(amount.into(), Scalar::random(rng));
@@ -152,14 +152,8 @@ impl ConfidentialTransferProof {
         // prove that the sender has enough funds.
         let updated_balance_blinding = balance_refresh_enc_blinding - amount_enc_blinding;
         let range_proofs = InRangeProof::prove_multiple(
-            &[
-                amount.into(),
-                (sender_balance - amount).into(),
-            ],
-            &[
-                amount_enc_blinding,
-                updated_balance_blinding,
-            ],
+            &[amount.into(), (sender_balance - amount).into()],
+            &[amount_enc_blinding, updated_balance_blinding],
             BALANCE_RANGE,
             rng,
         )?;
@@ -169,10 +163,13 @@ impl ConfidentialTransferProof {
             .iter()
             .enumerate()
             .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
-                (*auditor_id, AuditorPayload {
-                    amount_idx: (idx + 2) as u8,
-                    encrypted_hint: CipherTextHint::new(&witness, rng),
-                })
+                (
+                    *auditor_id,
+                    AuditorPayload {
+                        amount_idx: (idx + 2) as u8,
+                        encrypted_hint: CipherTextHint::new(&witness, rng),
+                    },
+                )
             })
             .collect();
 
@@ -231,17 +228,17 @@ impl ConfidentialTransferProof {
         let amount_commitment = self.sender_amount().y.compress();
         let updated_balance = self.refreshed_enc_balance - self.sender_amount();
         let updated_balance_commitment = updated_balance.y.compress();
-        self.range_proofs.verify_multiple(&[amount_commitment, updated_balance_commitment], BALANCE_RANGE, rng)?;
+        self.range_proofs.verify_multiple(
+            &[amount_commitment, updated_balance_commitment],
+            BALANCE_RANGE,
+            rng,
+        )?;
 
         Ok(())
     }
 
     /// Receiver verify the transaction amount using their private key.
-    pub fn receiver_verify(
-        &self,
-        receiver_account: ElgamalKeys,
-        amount: Balance,
-    ) -> Result<()> {
+    pub fn receiver_verify(&self, receiver_account: ElgamalKeys, amount: Balance) -> Result<()> {
         // Check that the amount is correct.
         receiver_account
             .verify(&self.receiver_amount(), &amount.into())
@@ -261,14 +258,12 @@ impl ConfidentialTransferProof {
     ) -> Result<Balance> {
         match self.auditors.get(&auditor_id) {
             Some(auditor) => {
-                let enc_amount = auditor.encrypted_hint.
-                    ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
-                auditor_enc_key
-                    .const_time_decrypt(&enc_amount)
+                let enc_amount = auditor
+                    .encrypted_hint
+                    .ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
+                auditor_enc_key.const_time_decrypt(&enc_amount)
             }
-            None => {
-                Err(Error::AuditorPayloadError)
-            }
+            None => Err(Error::AuditorPayloadError),
         }
     }
 
@@ -293,10 +288,7 @@ impl ConfidentialTransferProof {
 mod tests {
     extern crate wasm_bindgen_test;
     use super::*;
-    use crate::{
-        elgamal::ElgamalSecretKey,
-        ElgamalKeys, ElgamalPublicKey, CipherText, Scalar,
-    };
+    use crate::{elgamal::ElgamalSecretKey, CipherText, ElgamalKeys, ElgamalPublicKey, Scalar};
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use rand_core::{CryptoRng, RngCore};
@@ -363,7 +355,8 @@ mod tests {
         let ctx_init_data = result.unwrap();
 
         // Finalize the transaction and check its state.
-        ctx_init_data.receiver_verify(receiver_account.clone(), amount)
+        ctx_init_data
+            .receiver_verify(receiver_account.clone(), amount)
             .unwrap();
 
         // Justify the transaction
@@ -371,7 +364,8 @@ mod tests {
             .auditor_verify(AuditorId(0), &mediator_account)
             .unwrap();
 
-        assert!(ctx_init_data.verify(
+        assert!(ctx_init_data
+            .verify(
                 &sender_account.public,
                 &sender_init_balance,
                 &receiver_account.public,
@@ -383,10 +377,8 @@ mod tests {
         // ----------------------- Processing
         // Check that the transferred amount is added to the receiver's account balance
         // and subtracted from sender's balance.
-        let updated_sender_balance =
-            sender_init_balance - ctx_init_data.sender_amount();
-        let updated_receiver_balance =
-            receiver_init_balance + ctx_init_data.receiver_amount();
+        let updated_sender_balance = sender_init_balance - ctx_init_data.sender_amount();
+        let updated_receiver_balance = receiver_init_balance + ctx_init_data.receiver_amount();
 
         assert!(sender_account
             .verify(&updated_sender_balance, &(sender_balance - amount).into())
@@ -424,7 +416,8 @@ mod tests {
     ) {
         let mut sender_auditor_list = BTreeMap::from_iter(sender_auditor_list.iter().copied());
         let mut mediator_auditor_list = BTreeMap::from_iter(mediator_auditor_list.iter().copied());
-        let mut validator_auditor_list = BTreeMap::from_iter(validator_auditor_list.iter().copied());
+        let mut validator_auditor_list =
+            BTreeMap::from_iter(validator_auditor_list.iter().copied());
         let sender_balance = 500;
         let receiver_balance = 0;
         let amount = 400;
@@ -445,25 +438,25 @@ mod tests {
 
         // Create the transaction and check its result and state
         let ctx_init = ConfidentialTransferProof::new(
-                &sender_account,
-                &sender_init_balance,
-                sender_balance,
-                &receiver_account.public,
-                &sender_auditor_list,
-                amount,
-                &mut rng,
-            )
-            .unwrap();
+            &sender_account,
+            &sender_init_balance,
+            sender_balance,
+            &receiver_account.public,
+            &sender_auditor_list,
+            amount,
+            &mut rng,
+        )
+        .unwrap();
 
         // Finalize the transaction and check its state
-        ctx_init.receiver_verify(receiver_account.clone(), amount)
+        ctx_init
+            .receiver_verify(receiver_account.clone(), amount)
             .unwrap();
 
         // Justify the transaction
-        ctx_init.auditor_verify(
-            mediator_id,
-            &mediator_enc_keys
-        ).unwrap();
+        ctx_init
+            .auditor_verify(mediator_id, &mediator_enc_keys)
+            .unwrap();
 
         if mediator_check_fails {
             let result = ctx_init.verify(
@@ -496,8 +489,7 @@ mod tests {
         // Check that the transferred amount is added to the receiver's account balance
         // and subtracted from sender's balance.
         let updated_sender_balance = sender_init_balance - ctx_init.sender_amount();
-        let updated_receiver_balance =
-            receiver_init_balance + ctx_init.receiver_amount();
+        let updated_receiver_balance = receiver_init_balance + ctx_init.receiver_amount();
 
         assert!(sender_account
             .verify(&updated_sender_balance, &(sender_balance - amount).into())
@@ -511,12 +503,7 @@ mod tests {
 
         // ----------------------- Auditing
         for auditor in auditors_list {
-            assert!(ctx_init
-                .auditor_verify(
-                    auditor.0,
-                    &auditor.1,
-                )
-                .is_ok());
+            assert!(ctx_init.auditor_verify(auditor.0, &auditor.1,).is_ok());
         }
     }
 

@@ -7,16 +7,13 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
-            ZKProofResponse,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge, ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
 };
 use bulletproofs::PedersenGens;
-use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
-};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]

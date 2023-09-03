@@ -7,17 +7,14 @@ use crate::{
     errors::{Error, Result},
     proofs::{
         encryption_proofs::{
-            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge,
-            ZKProofResponse,
+            ProofProver, ProofProverAwaitingChallenge, ProofVerifier, ZKPChallenge, ZKProofResponse,
         },
         transcript::{TranscriptProtocol, UpdateTranscript},
     },
 };
 
 use bulletproofs::PedersenGens;
-use curve25519_dalek::{
-    constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar,
-};
+use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 #[cfg(feature = "serde")]
@@ -67,7 +64,7 @@ impl UpdateTranscript for CipherTextSameValueInitialMessage {
         transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL);
         transcript.append_u64(b"length-A", self.a.len() as u64);
         for a in &self.a {
-          transcript.append_validated_point(b"A", &a.compress())?;
+            transcript.append_validated_point(b"A", &a.compress())?;
         }
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
@@ -121,7 +118,11 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
         let rand_commitment1 = Scalar::random(rng);
         let rand_commitment2 = Scalar::random(rng);
 
-        let a = self.keys.iter().map(|key| (rand_commitment1 * *key.pub_key).into()).collect();
+        let a = self
+            .keys
+            .iter()
+            .map(|key| (rand_commitment1 * *key.pub_key).into())
+            .collect();
 
         (
             CipherTextSameValueProver {
@@ -131,7 +132,8 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
             },
             CipherTextSameValueInitialMessage {
                 a,
-                b: (rand_commitment1 * self.pc_gens.B_blinding + rand_commitment2 * self.pc_gens.B).into(),
+                b: (rand_commitment1 * self.pc_gens.B_blinding + rand_commitment2 * self.pc_gens.B)
+                    .into(),
             },
         )
     }
@@ -182,19 +184,22 @@ impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
         let z2 = *final_response.z2;
         let b = initial_message.b.decompress();
         ensure!(
-            z1 * self.pc_gens.B_blinding + z2 * self.pc_gens.B
-                == b + challenge.x() * first_y,
+            z1 * self.pc_gens.B_blinding + z2 * self.pc_gens.B == b + challenge.x() * first_y,
             Error::CiphertextSameValueFinalResponseVerificationError { check: 0 }
         );
 
-        for ((key, cipher), a) in self.keys.iter().zip(self.ciphertexts.iter()).zip(initial_message.a.iter()) {
+        for ((key, cipher), a) in self
+            .keys
+            .iter()
+            .zip(self.ciphertexts.iter())
+            .zip(initial_message.a.iter())
+        {
             let a = a.decompress();
             // The ciphertext that encrypt the same witness must have the same Y value.
             ensure!(first_y == *cipher.y, Error::VerificationError);
 
             ensure!(
-                z1 * *key.pub_key
-                    == a + challenge.x() * *cipher.x,
+                z1 * *key.pub_key == a + challenge.x() * *cipher.x,
                 Error::CiphertextSameValueFinalResponseVerificationError { check: 1 }
             );
         }
@@ -256,10 +261,7 @@ mod tests {
         // Negative tests
         let bad_initial_message = CipherTextSameValueInitialMessage::default();
         let result = verifier.verify(&challenge, &bad_initial_message, &final_response);
-        assert_err!(
-            result,
-            Error::VerificationError
-        );
+        assert_err!(result, Error::VerificationError);
 
         let bad_final_response = CipherTextSameValueFinalResponse::default();
         let result = verifier.verify(&challenge, &initial_message, &bad_final_response);

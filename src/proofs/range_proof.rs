@@ -151,8 +151,11 @@ mod tests {
         let large_secret_value: u64 = u64::from(u32::max_value()) + 3;
         let (bad_witness, bad_cipher) = elg_pub.encrypt_value(large_secret_value.into(), &mut rng);
         let bad_proof =
-            InRangeProof::prove(large_secret_value, bad_witness.blinding(), range, &mut rng).unwrap();
-        assert!(!bad_proof.verify(&bad_cipher.y.compress(), range, &mut rng).is_ok());
+            InRangeProof::prove(large_secret_value, bad_witness.blinding(), range, &mut rng)
+                .unwrap();
+        assert!(!bad_proof
+            .verify(&bad_cipher.y.compress(), range, &mut rng)
+            .is_ok());
     }
 
     #[test]
@@ -169,21 +172,37 @@ mod tests {
         let (witness2, cipher2) = elg_pub.encrypt_value(secret_value2.into(), &mut rng);
 
         // Positive test: secret values within range [0, 2^32)
-        let proof = InRangeProof::prove_multiple(&[secret_value1, secret_value2], &[witness1.blinding(), witness2.blinding()], range, &mut rng)
-            .expect("This shouldn't happen.");
-        assert!(proof.verify_multiple(&[
-            cipher1.y.compress(),
-            cipher2.y.compress()
-        ], range, &mut rng).is_ok());
+        let proof = InRangeProof::prove_multiple(
+            &[secret_value1, secret_value2],
+            &[witness1.blinding(), witness2.blinding()],
+            range,
+            &mut rng,
+        )
+        .expect("This shouldn't happen.");
+        assert!(proof
+            .verify_multiple(
+                &[cipher1.y.compress(), cipher2.y.compress()],
+                range,
+                &mut rng
+            )
+            .is_ok());
 
         // Negative test: secret value outside the allowed range
         let large_secret_value: u64 = u64::from(u32::max_value()) + 3;
         let (bad_witness, bad_cipher) = elg_pub.encrypt_value(large_secret_value.into(), &mut rng);
-        let bad_proof = InRangeProof::prove_multiple(&[large_secret_value, secret_value2], &[bad_witness.blinding(), witness2.blinding()], range, &mut rng)
-            .expect("This shouldn't happen.");
-        assert!(!bad_proof.verify_multiple(&[
-            bad_cipher.y.compress(),
-            cipher2.y.compress()
-        ], range, &mut rng).is_ok());
+        let bad_proof = InRangeProof::prove_multiple(
+            &[large_secret_value, secret_value2],
+            &[bad_witness.blinding(), witness2.blinding()],
+            range,
+            &mut rng,
+        )
+        .expect("This shouldn't happen.");
+        assert!(!bad_proof
+            .verify_multiple(
+                &[bad_cipher.y.compress(), cipher2.y.compress()],
+                range,
+                &mut rng
+            )
+            .is_ok());
     }
 }

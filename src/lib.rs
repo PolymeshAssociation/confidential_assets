@@ -26,8 +26,7 @@ pub use elgamal::{
 pub use errors::{Error, Result};
 pub use proofs::{
     ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,
-    range_proof::InRangeProof,
-    wellformedness_proof::WellformednessProof,
+    range_proof::InRangeProof, wellformedness_proof::WellformednessProof,
 };
 
 /// The balance value to keep confidential.
@@ -56,8 +55,7 @@ pub const BALANCE_RANGE: u32 = 64;
 // -------------------------------------------------------------------------------------
 
 /// Holds ElGamal encryption keys.
-#[derive(Clone, Debug)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Debug, Zeroize, ZeroizeOnDrop)]
 pub struct ElgamalKeys {
     #[zeroize(skip)]
     pub public: ElgamalPublicKey,
@@ -65,8 +63,8 @@ pub struct ElgamalKeys {
 }
 
 impl core::ops::Deref for ElgamalKeys {
-  type Target = ElgamalSecretKey;
-  fn deref(&self) -> &Self::Target {
-      &self.secret
-  }
+    type Target = ElgamalSecretKey;
+    fn deref(&self) -> &Self::Target {
+        &self.secret
+    }
 }

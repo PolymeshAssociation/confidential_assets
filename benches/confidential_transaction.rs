@@ -1,8 +1,9 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
+use codec::Encode;
 use confidential_assets::{
-    elgamal::{CommitmentWitness, CipherText, CipherTextHint},
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
+    elgamal::{CipherText, CipherTextHint, CommitmentWitness},
     errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
@@ -10,20 +11,14 @@ use confidential_assets::{
             CipherEqualSamePubKeyProof, CipherTextRefreshmentProverAwaitingChallenge,
         },
         ciphertext_same_value_proof::{
-            CipherTextSameValueProof,
-            CipherTextSameValueProverAwaitingChallenge,
+            CipherTextSameValueProof, CipherTextSameValueProverAwaitingChallenge,
         },
         encryption_proofs::single_property_prover,
         range_proof::InRangeProof,
     },
-    transaction::{
-        AuditorId, AuditorPayload, ConfidentialTransferProof,
-    },
-    Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey,
-    Scalar,
-    BALANCE_RANGE,
+    transaction::{AuditorId, AuditorPayload, ConfidentialTransferProof},
+    Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
-use codec::Encode;
 use rand::thread_rng;
 use rand_core::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
@@ -73,7 +68,11 @@ impl SenderProofGen {
         amount: Balance,
         rng: &mut T,
     ) -> Self {
-        let keys = vec![sender_account.public, *receiver_pub_account, *mediator_pub_key];
+        let keys = vec![
+            sender_account.public,
+            *receiver_pub_account,
+            *mediator_pub_key,
+        ];
         Self {
             // Inputs.
             sender_sec: sender_account.secret.clone(),
@@ -101,7 +100,10 @@ impl SenderProofGen {
         }
     }
 
-    pub fn finalize<T: RngCore + CryptoRng>(mut self, rng: &mut T) -> Result<ConfidentialTransferProof> {
+    pub fn finalize<T: RngCore + CryptoRng>(
+        mut self,
+        rng: &mut T,
+    ) -> Result<ConfidentialTransferProof> {
         self.run_to_stage(u32::MAX, rng)?;
 
         Ok(ConfidentialTransferProof {
@@ -131,7 +133,8 @@ impl SenderProofGen {
             }
             1 => {
                 // Prove that the amount encrypted under different public keys are the same.
-                self.amounts = Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
+                self.amounts =
+                    Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
             2 => {
                 self.amount_equal_cipher_proof = Some(single_property_prover(
@@ -168,30 +171,32 @@ impl SenderProofGen {
                 // Prove that the amount is not negative and
                 // prove that the sender has enough funds.
                 let amount_enc_blinding = self.witness.blinding();
-                let updated_balance_blinding = self.balance_refresh_enc_blinding - amount_enc_blinding;
+                let updated_balance_blinding =
+                    self.balance_refresh_enc_blinding - amount_enc_blinding;
                 self.range_proofs = Some(InRangeProof::prove_multiple(
                     &[
                         self.amount.into(),
                         (self.sender_balance - self.amount).into(),
                     ],
-                    &[
-                        amount_enc_blinding,
-                        updated_balance_blinding,
-                    ],
+                    &[amount_enc_blinding, updated_balance_blinding],
                     BALANCE_RANGE,
                     rng,
                 )?);
             }
             6 => {
                 // Add the necessary payload for auditors.
-                self.auditors = self.auditor_keys
+                self.auditors = self
+                    .auditor_keys
                     .iter()
                     .enumerate()
                     .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
-                        (*auditor_id, AuditorPayload {
-                            amount_idx: (idx + 2) as u8,
-                            encrypted_hint: CipherTextHint::new(&self.witness, rng),
-                        })
+                        (
+                            *auditor_id,
+                            AuditorPayload {
+                                amount_idx: (idx + 2) as u8,
+                                encrypted_hint: CipherTextHint::new(&self.witness, rng),
+                            },
+                        )
                     })
                     .collect();
             }
@@ -270,7 +275,8 @@ fn bench_transaction_sender_proof_stage(
             &receiver_account,
             &auditor_keys,
             &mut rng,
-        ).expect(&format!("Verify Sender proof of amount {amount:?}"));
+        )
+        .expect(&format!("Verify Sender proof of amount {amount:?}"));
     }
 }
 
@@ -280,7 +286,10 @@ fn bench_transaction_sender(
     sender_balances: Vec<(Balance, CipherText)>,
     rcvr_pub_account: ElgamalPublicKey,
     mediator_pub_key: ElgamalPublicKey,
-) -> (BTreeMap<AuditorId, ElgamalPublicKey>, Vec<(Balance, CipherText, ConfidentialTransferProof)>) {
+) -> (
+    BTreeMap<AuditorId, ElgamalPublicKey>,
+    Vec<(Balance, CipherText, ConfidentialTransferProof)>,
+) {
     let mut rng = thread_rng();
 
     let auditor_keys = BTreeMap::from([(AuditorId(0), mediator_pub_key)]);
@@ -292,15 +301,15 @@ fn bench_transaction_sender(
             |b, (&amount, sender_balance)| {
                 b.iter(|| {
                     ConfidentialTransferProof::new(
-                            &sender_account,
-                            sender_balance,
-                            amount,
-                            &rcvr_pub_account,
-                            &auditor_keys,
-                            amount,
-                            &mut rng,
-                        )
-                        .unwrap()
+                        &sender_account,
+                        sender_balance,
+                        amount,
+                        &rcvr_pub_account,
+                        &auditor_keys,
+                        amount,
+                        &mut rng,
+                    )
+                    .unwrap()
                 })
             },
         );
@@ -313,17 +322,20 @@ fn bench_transaction_sender(
             eprintln!("Generate Sender Proof for: {amount}");
             let now = std::time::Instant::now();
             let tx = ConfidentialTransferProof::new(
-                    &sender_account,
-                    &sender_balance,
-                    amount,
-                    &rcvr_pub_account,
-                    &auditor_keys,
-                    amount,
-                    &mut rng,
-                )
-                .unwrap();
+                &sender_account,
+                &sender_balance,
+                amount,
+                &rcvr_pub_account,
+                &auditor_keys,
+                amount,
+                &mut rng,
+            )
+            .unwrap();
             let size = tx.encoded_size();
-            eprintln!("elapsed: {:.0?} ms, size: {size:?}", now.elapsed().as_secs_f32() * 1_000.0);
+            eprintln!(
+                "elapsed: {:.0?} ms, size: {size:?}",
+                now.elapsed().as_secs_f32() * 1_000.0
+            );
             (amount, sender_balance, tx)
         })
         .collect();
@@ -383,7 +395,8 @@ fn bench_transaction_receiver(
     transactions
         .into_iter()
         .map(|(amount, sender_balance, init_tx)| {
-            init_tx.receiver_verify(receiver_account.clone(), amount)
+            init_tx
+                .receiver_verify(receiver_account.clone(), amount)
                 .unwrap();
             (amount, sender_balance, init_tx)
         })
@@ -403,10 +416,8 @@ fn bench_transaction_mediator(
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx.auditor_verify(
-                            AuditorId(0),
-                            &mediator_account,
-                        )
+                    init_tx
+                        .auditor_verify(AuditorId(0), &mediator_account)
                         .unwrap();
                 })
             },
@@ -432,7 +443,8 @@ fn bench_transaction_validator(
             &(sender_balance, init_tx.clone()),
             |b, (sender_balance, init_tx)| {
                 b.iter(|| {
-                    init_tx.verify(
+                    init_tx
+                        .verify(
                             &sender_pub_account,
                             sender_balance,
                             &receiver_pub_account,
@@ -518,11 +530,7 @@ fn bench_transaction(c: &mut Criterion) {
         bench_transaction_receiver(c, receiver_account.clone(), transactions);
 
     // Justification
-    bench_transaction_mediator(
-        c,
-        private_account,
-        finalized_transactions.clone(),
-    );
+    bench_transaction_mediator(c, private_account, finalized_transactions.clone());
 
     // Validation
     bench_transaction_validator(

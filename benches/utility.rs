@@ -1,5 +1,5 @@
 use confidential_assets::{
-    elgamal::ElgamalSecretKey, Balance, ElgamalKeys, ElgamalPublicKey, CipherText, Scalar,
+    elgamal::ElgamalSecretKey, Balance, CipherText, ElgamalKeys, ElgamalPublicKey, Scalar,
 };
 use rand::{CryptoRng, RngCore};
 
