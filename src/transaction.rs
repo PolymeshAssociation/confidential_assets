@@ -103,7 +103,6 @@ impl ConfidentialTransferProof {
         );
         // Verify the sender's balance.
         sender_account
-            .secret
             .verify(sender_init_balance, &sender_balance.into())?;
 
         // All public keys.
@@ -240,7 +239,6 @@ impl ConfidentialTransferProof {
     ) -> Result<()> {
         // Check that the amount is correct.
         receiver_account
-            .secret
             .verify(&self.receiver_amount(), &amount.into())
             .map_err(|_| Error::TransactionAmountMismatch {
                 expected_amount: amount,
@@ -261,7 +259,6 @@ impl ConfidentialTransferProof {
                 let enc_amount = auditor.encrypted_hint.
                     ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
                 auditor_enc_key
-                    .secret
                     .const_time_decrypt(&enc_amount)
             }
             None => {
@@ -387,11 +384,9 @@ mod tests {
             receiver_init_balance + ctx_init_data.receiver_amount();
 
         assert!(sender_account
-            .secret
             .verify(&updated_sender_balance, &(sender_balance - amount).into())
             .is_ok());
         assert!(receiver_account
-            .secret
             .verify(
                 &updated_receiver_balance,
                 &(receiver_balance + amount).into()
@@ -500,11 +495,9 @@ mod tests {
             receiver_init_balance + ctx_init.receiver_amount();
 
         assert!(sender_account
-            .secret
             .verify(&updated_sender_balance, &(sender_balance - amount).into())
             .is_ok());
         assert!(receiver_account
-            .secret
             .verify(
                 &updated_receiver_balance,
                 &(receiver_balance + amount).into()

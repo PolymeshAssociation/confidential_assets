@@ -5,7 +5,8 @@
 
 use crate::{
     codec_wrapper::{
-        RistrettoPointDecoder, RistrettoPointEncoder, ScalarDecoder, ScalarEncoder,
+        WrappedScalar,
+        RistrettoPointDecoder, RistrettoPointEncoder,
         RISTRETTO_POINT_SIZE,
     },
     errors::{Error, Result},
@@ -13,13 +14,11 @@ use crate::{
 };
 
 use bulletproofs::PedersenGens;
-use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::ops::{Deref, Add, AddAssign, Sub, SubAssign};
 use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
 };
-#[cfg(feature = "std")]
-use rand::rngs::StdRng;
 use rand_core::{CryptoRng, RngCore};
 
 #[cfg(feature = "serde")]
@@ -38,7 +37,6 @@ pub use const_time_elgamal_encryption::{CipherTextHint, CipherTextWithHint};
 
 /// Prover's representation of the commitment secret.
 #[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CommitmentWitness {
     /// Depending on how the witness was created this variable stores the
     /// balance value or transaction amount in Scalar format.
@@ -61,37 +59,6 @@ impl CommitmentWitness {
 impl CommitmentWitness {
     pub fn new(value: Scalar, blinding: Scalar) -> Self {
         CommitmentWitness { value, blinding }
-    }
-}
-
-#[cfg(feature = "std")]
-impl From<(Scalar, &mut StdRng)> for CommitmentWitness {
-    fn from(v: (Scalar, &mut StdRng)) -> Self {
-        CommitmentWitness {
-            value: v.0,
-            blinding: Scalar::random(v.1),
-        }
-    }
-}
-
-impl Encode for CommitmentWitness {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.value).size_hint() + ScalarEncoder(&self.blinding).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.value).encode_to(dest);
-        ScalarEncoder(&self.blinding).encode_to(dest);
-    }
-}
-
-impl Decode for CommitmentWitness {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let value = <ScalarDecoder>::decode(input)?.0;
-        let blinding = <ScalarDecoder>::decode(input)?.0;
-
-        Ok(CommitmentWitness { value, blinding })
     }
 }
 
@@ -201,28 +168,22 @@ define_sub_assign_variants!(LHS = CipherText, RHS = CipherText);
 /// where g and h are 2 orthogonal generators.
 
 /// An Elgamal Secret Key is a random scalar.
-#[derive(Clone, Zeroize, ZeroizeOnDrop, Debug)]
+#[derive(Clone, Encode, Decode, Zeroize, ZeroizeOnDrop, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ElgamalSecretKey {
-    pub secret: Scalar,
+    pub secret: WrappedScalar,
 }
 
-impl Encode for ElgamalSecretKey {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        ScalarEncoder(&self.secret).size_hint()
-    }
-
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        ScalarEncoder(&self.secret).encode_to(dest);
-    }
+impl Deref for ElgamalSecretKey {
+  type Target = Scalar;
+  fn deref(&self) -> &Self::Target {
+      &self.secret
+  }
 }
 
-impl Decode for ElgamalSecretKey {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let secret = <ScalarDecoder>::decode(input)?.0;
-
-        Ok(ElgamalSecretKey { secret })
+impl ElgamalSecretKey {
+    pub fn secret(&self) -> Scalar {
+        *self.secret
     }
 }
 
@@ -308,13 +269,13 @@ impl Decode for ElgamalPublicKey {
 
 impl ElgamalSecretKey {
     pub fn new(secret: Scalar) -> Self {
-        ElgamalSecretKey { secret }
+        ElgamalSecretKey { secret: secret.into() }
     }
 
     pub fn get_public_key(&self) -> ElgamalPublicKey {
         let gens = PedersenGens::default();
         ElgamalPublicKey {
-            pub_key: self.secret * gens.B_blinding,
+            pub_key: self.secret() * gens.B_blinding,
         }
     }
 
@@ -322,7 +283,7 @@ impl ElgamalSecretKey {
     pub fn decrypt(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
         // Brute force all possible values to find the one that matches value * h.
         let mut result = Scalar::zero() * gens.B;
         for v in 0..Balance::max_value() {
@@ -340,7 +301,7 @@ impl ElgamalSecretKey {
     pub fn decrypt_discrete_log(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
         let discrete_log = discrete_log::DiscreteLog::new(gens.B);
         if let Some(v) = discrete_log.decode(value_h) {
             return Ok(v as Balance);
@@ -363,7 +324,7 @@ impl ElgamalSecretKey {
         }
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
         let discrete_log = discrete_log::DiscreteLog::new(gens.B);
         let starting_point = value_h - Scalar::from(min) * gens.B;
         discrete_log
@@ -380,7 +341,7 @@ impl ElgamalSecretKey {
     ) -> Option<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
         // Brute force all possible values to find the one that matches value * h.
         let mut result = Scalar::from(min) * gens.B;
         for v in min..max {
@@ -401,7 +362,7 @@ impl ElgamalSecretKey {
 
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
 
         const CHUNK_SIZE: Balance = 64 * 1024; // Needs to be a power of two.
         const CHUNK_COUNT: Balance = Balance::max_value() / CHUNK_SIZE;
@@ -452,7 +413,7 @@ impl ElgamalSecretKey {
     pub fn verify(&self, cipher_text: &CipherText, value: &Scalar) -> Result<()> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key.
-        let value_h = cipher_text.y - self.secret.invert() * cipher_text.x;
+        let value_h = cipher_text.y - self.invert() * cipher_text.x;
         // Verify that the `value` and see if it matches `value * h`.
         if value * gens.B == value_h {
             return Ok(());

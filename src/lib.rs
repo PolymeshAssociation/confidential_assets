@@ -6,12 +6,7 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-use codec::{Decode, Encode};
 
 pub use curve25519_dalek::scalar::Scalar;
 
@@ -61,11 +56,17 @@ pub const BALANCE_RANGE: u32 = 64;
 // -------------------------------------------------------------------------------------
 
 /// Holds ElGamal encryption keys.
-#[derive(Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Clone, Debug)]
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct ElgamalKeys {
     #[zeroize(skip)]
     pub public: ElgamalPublicKey,
     pub secret: ElgamalSecretKey,
+}
+
+impl core::ops::Deref for ElgamalKeys {
+  type Target = ElgamalSecretKey;
+  fn deref(&self) -> &Self::Target {
+      &self.secret
+  }
 }

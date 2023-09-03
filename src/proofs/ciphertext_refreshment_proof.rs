@@ -145,7 +145,7 @@ impl<'a> CipherTextRefreshmentProverAwaitingChallenge<'a> {
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct CipherTextRefreshmentProver {
     /// The secret key.
-    secret_key: ElgamalSecretKey,
+    secret_key: Scalar,
 
     /// The randomness generated in the first round.
     u: Scalar,
@@ -179,7 +179,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
         };
 
         let prover = CipherTextRefreshmentProver {
-            secret_key: self.secret_key.clone(),
+            secret_key: self.secret_key.secret(),
             u: rand_commitment,
         };
         (prover, initial_message)
@@ -188,7 +188,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
 
 impl ProofProver<CipherTextRefreshmentFinalResponse> for CipherTextRefreshmentProver {
     fn apply_challenge(&self, c: &ZKPChallenge) -> CipherTextRefreshmentFinalResponse {
-        CipherTextRefreshmentFinalResponse(self.u + c.x() * self.secret_key.secret)
+        CipherTextRefreshmentFinalResponse(self.u + c.x() * self.secret_key)
     }
 }
 
