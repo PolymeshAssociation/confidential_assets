@@ -4,7 +4,6 @@
 //! is within a range.
 
 use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
-use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
@@ -23,32 +22,6 @@ const RANGE_PROOF_LABEL: &[u8] = b"PolymeshRangeProof";
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InRangeProof(pub RangeProof);
-
-impl Encode for InRangeProof {
-    fn size_hint(&self) -> usize {
-        // See `RangeProof::to_bytes`.
-        const LOG_OF_NUM_SECRET_BITS: usize = 6;
-        const SIZE: usize = (2 * LOG_OF_NUM_SECRET_BITS + 9) * 32;
-
-        Compact::<u32>::compact_len(&(SIZE as u32)) + SIZE
-    }
-
-    /// Encodes itself as an array of bytes.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.to_bytes().encode_to(dest);
-    }
-}
-
-impl Decode for InRangeProof {
-    /// Decodes a `Scalar` from an array of bytes.
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let raw = <Vec<u8>>::decode(input)?;
-        let range_proof =
-            RangeProof::from_bytes(&raw).map_err(|_| CodecError::from("Invalid `RangeProof`"))?;
-
-        Ok(Self(range_proof))
-    }
-}
 
 impl InRangeProof {
     #[allow(dead_code)]

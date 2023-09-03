@@ -1,4 +1,5 @@
-use codec::{Decode, Encode, Error as CodecError, Input, Output};
+use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
+use bulletproofs::RangeProof;
 use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
@@ -9,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use core::ops::{
     Deref, DerefMut,
 };
+
+use crate::InRangeProof;
 
 /// Constants:
 /// A serialized Ristretto point size.
@@ -197,6 +200,34 @@ impl DerefMut for WrappedScalar {
 impl From<Scalar> for WrappedScalar {
     fn from(data: Scalar) -> Self {
         Self(data)
+    }
+}
+
+// RangeProof encoding.
+
+impl Encode for InRangeProof {
+    fn size_hint(&self) -> usize {
+        // See `RangeProof::to_bytes`.
+        const LOG_OF_NUM_SECRET_BITS: usize = 6;
+        const SIZE: usize = (2 * LOG_OF_NUM_SECRET_BITS + 9) * 32;
+
+        Compact::<u32>::compact_len(&(SIZE as u32)) + SIZE
+    }
+
+    /// Encodes itself as an array of bytes.
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        self.0.to_bytes().encode_to(dest);
+    }
+}
+
+impl Decode for InRangeProof {
+    /// Decodes a `Scalar` from an array of bytes.
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let raw = <Vec<u8>>::decode(input)?;
+        let range_proof =
+            RangeProof::from_bytes(&raw).map_err(|_| CodecError::from("Invalid `RangeProof`"))?;
+
+        Ok(Self(range_proof))
     }
 }
 
