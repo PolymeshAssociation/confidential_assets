@@ -1,7 +1,9 @@
 use confidential_assets::{
     elgamal::ElgamalSecretKey, Balance, CipherText, ElgamalKeys, ElgamalPublicKey, Scalar,
+    transaction::AuditorId,
 };
 use rand::{CryptoRng, RngCore};
+use std::collections::BTreeMap;
 
 pub mod balance_range {
     pub const MIN_SENDER_BALANCE_ORDER: u32 = 10;
@@ -18,19 +20,21 @@ pub fn issue_assets<R: RngCore + CryptoRng>(
     init_balance + encrypted_amount
 }
 
-pub fn generate_mediator_keys<R: RngCore + CryptoRng>(
+pub fn generate_auditors<R: RngCore + CryptoRng>(
+    count: usize,
     rng: &mut R,
-) -> (ElgamalPublicKey, ElgamalKeys) {
-    let mediator_elg_secret_key = ElgamalSecretKey::new(Scalar::random(rng));
-    let mediator_enc_key = ElgamalKeys {
-        public: mediator_elg_secret_key.get_public_key(),
-        secret: mediator_elg_secret_key,
-    };
+) -> BTreeMap<AuditorId, ElgamalKeys> {
+    (0..count).into_iter().map(|n| {
+        let secret_key = ElgamalSecretKey::new(Scalar::random(rng));
+        let keys = ElgamalKeys {
+            public: secret_key.get_public_key(),
+            secret: secret_key,
+        };
 
-    (mediator_enc_key.public, mediator_enc_key)
+        (AuditorId(n as u32), keys)
+    }).collect()
 }
 
-#[allow(dead_code)]
 pub fn create_account_with_amount<R: RngCore + CryptoRng>(
     rng: &mut R,
     initial_amount: Balance,

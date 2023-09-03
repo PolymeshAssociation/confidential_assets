@@ -16,7 +16,7 @@ use confidential_assets::{
         encryption_proofs::single_property_prover,
         range_proof::InRangeProof,
     },
-    transaction::{AuditorId, AuditorPayload, ConfidentialTransferProof},
+    transaction::{AuditorId, AuditorPayload, ConfidentialTransferProof, MAX_AUDITORS},
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 use rand::thread_rng;
@@ -64,15 +64,12 @@ impl SenderProofGen {
         sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_account: &ElgamalPublicKey,
-        mediator_pub_key: &ElgamalPublicKey,
+        auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
     ) -> Self {
-        let keys = vec![
-            sender_account.public,
-            *receiver_pub_account,
-            *mediator_pub_key,
-        ];
+        let keys = ConfidentialTransferProof::keys(&sender_account.public, receiver_pub_account, auditor_keys)
+            .expect("keys");
         Self {
             // Inputs.
             sender_sec: sender_account.secret.clone(),
@@ -80,7 +77,7 @@ impl SenderProofGen {
             sender_init_balance: sender_init_balance.clone(),
             sender_balance,
             receiver_pub: receiver_pub_account.clone(),
-            auditor_keys: BTreeMap::from([(AuditorId(0), *mediator_pub_key)]),
+            auditor_keys: auditor_keys.clone(),
             keys,
             amount,
 
@@ -216,7 +213,7 @@ fn bench_transaction_sender_proof_stage(
     sender_account: ElgamalKeys,
     sender_balances: &[(Balance, CipherText)],
     rcvr_pub_account: ElgamalPublicKey,
-    mediator_pub_key: ElgamalPublicKey,
+    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
     bench_stage: u32,
 ) {
     let mut rng = thread_rng();
@@ -229,7 +226,7 @@ fn bench_transaction_sender_proof_stage(
                 sender_balance,
                 *amount,
                 &rcvr_pub_account,
-                &mediator_pub_key,
+                auditor_keys,
                 *amount,
                 &mut rng,
             );
@@ -285,14 +282,10 @@ fn bench_transaction_sender(
     sender_account: ElgamalKeys,
     sender_balances: Vec<(Balance, CipherText)>,
     rcvr_pub_account: ElgamalPublicKey,
-    mediator_pub_key: ElgamalPublicKey,
-) -> (
-    BTreeMap<AuditorId, ElgamalPublicKey>,
-    Vec<(Balance, CipherText, ConfidentialTransferProof)>,
-) {
+    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+) -> Vec<(Balance, CipherText, ConfidentialTransferProof)> {
     let mut rng = thread_rng();
 
-    let auditor_keys = BTreeMap::from([(AuditorId(0), mediator_pub_key)]);
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, sender_balance) in &sender_balances {
         group.bench_with_input(
@@ -305,7 +298,7 @@ fn bench_transaction_sender(
                         sender_balance,
                         amount,
                         &rcvr_pub_account,
-                        &auditor_keys,
+                        auditor_keys,
                         amount,
                         &mut rng,
                     )
@@ -316,7 +309,7 @@ fn bench_transaction_sender(
     }
     group.finish();
 
-    let transactions = sender_balances
+    sender_balances
         .into_iter()
         .map(|(amount, sender_balance)| {
             eprintln!("Generate Sender Proof for: {amount}");
@@ -326,7 +319,7 @@ fn bench_transaction_sender(
                 &sender_balance,
                 amount,
                 &rcvr_pub_account,
-                &auditor_keys,
+                auditor_keys,
                 amount,
                 &mut rng,
             )
@@ -338,11 +331,10 @@ fn bench_transaction_sender(
             );
             (amount, sender_balance, tx)
         })
-        .collect();
-    (auditor_keys, transactions)
+        .collect()
 }
 
-fn bench_transaction_verify_sender_proof(
+fn bench_transaction_validator(
     c: &mut Criterion,
     sender_account: ElgamalPublicKey,
     receiver_account: ElgamalPublicKey,
@@ -353,7 +345,7 @@ fn bench_transaction_verify_sender_proof(
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, sender_balance, tx) in transactions {
         group.bench_with_input(
-            BenchmarkId::new("Verify Sender Proof", amount),
+            BenchmarkId::new("Validator", amount),
             &(tx.clone(), sender_balance.clone()),
             |b, (tx, sender_balance)| {
                 b.iter(|| {
@@ -375,10 +367,12 @@ fn bench_transaction_verify_sender_proof(
 fn bench_transaction_receiver(
     c: &mut Criterion,
     receiver_account: ElgamalKeys,
-    transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
-) -> Vec<(Balance, CipherText, ConfidentialTransferProof)> {
+    transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
+) {
     let mut group = c.benchmark_group("MERCAT Transaction");
-    for (amount, _, tx) in &transactions {
+    for (amount, _, tx) in transactions {
+        tx.receiver_verify(receiver_account.clone(), *amount)
+            .expect("Receiver verify");
         group.bench_with_input(
             BenchmarkId::new("Receiver", *amount),
             &(amount, tx.clone()),
@@ -391,33 +385,24 @@ fn bench_transaction_receiver(
         );
     }
     group.finish();
-
-    transactions
-        .into_iter()
-        .map(|(amount, sender_balance, init_tx)| {
-            init_tx
-                .receiver_verify(receiver_account.clone(), amount)
-                .unwrap();
-            (amount, sender_balance, init_tx)
-        })
-        .collect()
 }
 
-fn bench_transaction_mediator(
+fn bench_transaction_auditor(
     c: &mut Criterion,
-    mediator_account: ElgamalKeys,
-    transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
+    id: AuditorId,
+    keys: &ElgamalKeys,
+    transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
-    for (amount, _sender_balance, init_tx) in &transactions {
-        let label = format!("initial_balance ({:?})", amount);
+    for (amount, _sender_balance, init_tx) in transactions {
+        let label = format!("{:?} initial_balance ({:?})", id.0, amount);
         group.bench_with_input(
-            BenchmarkId::new("Mediator", label),
+            BenchmarkId::new("Auditor", label),
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
                     init_tx
-                        .auditor_verify(AuditorId(0), &mediator_account)
+                        .auditor_verify(id, keys)
                         .unwrap();
                 })
             },
@@ -425,43 +410,11 @@ fn bench_transaction_mediator(
     }
     group.finish();
 }
-
-fn bench_transaction_validator(
-    c: &mut Criterion,
-    sender_pub_account: ElgamalPublicKey,
-    receiver_pub_account: ElgamalPublicKey,
-    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
-    transactions: Vec<(Balance, CipherText, ConfidentialTransferProof)>,
-) {
-    let mut rng = thread_rng();
-
-    let mut group = c.benchmark_group("MERCAT Transaction");
-    for (amount, sender_balance, init_tx) in &transactions {
-        let label = format!("initial_balance ({:?})", amount);
-        group.bench_with_input(
-            BenchmarkId::new("Validator", label),
-            &(sender_balance, init_tx.clone()),
-            |b, (sender_balance, init_tx)| {
-                b.iter(|| {
-                    init_tx
-                        .verify(
-                            &sender_pub_account,
-                            sender_balance,
-                            &receiver_pub_account,
-                            auditor_keys,
-                            &mut rng,
-                        )
-                        .unwrap();
-                })
-            },
-        );
-    }
-    group.finish();
-}
-
 fn bench_transaction(c: &mut Criterion) {
     let mut rng = thread_rng();
-    let (enc_pub_key, private_account) = utility::generate_mediator_keys(&mut rng);
+    let auditors = utility::generate_auditors(MAX_AUDITORS, &mut rng);
+    let auditor_keys: BTreeMap<_, _> =
+        auditors.iter().map(|(id, keys)| (*id, keys.public)).collect();
     let (sender_account, sender_init_balance) = utility::create_account_with_amount(&mut rng, 0);
     let sender_pub_account = sender_account.public.clone();
 
@@ -485,7 +438,7 @@ fn bench_transaction(c: &mut Criterion) {
             sender_account.clone(),
             &sender_balances,
             receiver_account.public.clone(),
-            enc_pub_key.clone(),
+            &auditor_keys,
             stage,
         );
     }
@@ -507,17 +460,16 @@ fn bench_transaction(c: &mut Criterion) {
         .collect();
 
     // Initialization
-    let (auditor_keys, transactions) = bench_transaction_sender(
+    let transactions = bench_transaction_sender(
         c,
         sender_account,
         sender_balances,
         receiver_account.public.clone(),
-        enc_pub_key,
+        &auditor_keys,
     );
 
     // Verify sender proofs.
-    eprintln!("--- Verify Sender Proofs");
-    bench_transaction_verify_sender_proof(
+    bench_transaction_validator(
         c,
         sender_pub_account.clone(),
         receiver_account.public.clone(),
@@ -525,21 +477,13 @@ fn bench_transaction(c: &mut Criterion) {
         &transactions,
     );
 
-    // Finalization
-    let finalized_transactions =
-        bench_transaction_receiver(c, receiver_account.clone(), transactions);
+    // Receiver verify transaction amount.
+    bench_transaction_receiver(c, receiver_account.clone(), transactions.as_slice());
 
-    // Justification
-    bench_transaction_mediator(c, private_account, finalized_transactions.clone());
-
-    // Validation
-    bench_transaction_validator(
-        c,
-        sender_pub_account,
-        receiver_account.public,
-        &auditor_keys,
-        finalized_transactions,
-    );
+    // Mediator (AuditorId(0)) verify transaction amount.
+    let mediator_id = AuditorId(0);
+    let mediator = auditors.get(&mediator_id).unwrap();
+    bench_transaction_auditor(c, mediator_id, mediator, transactions.as_slice());
 }
 
 criterion_group! {
