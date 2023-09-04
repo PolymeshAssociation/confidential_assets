@@ -1,11 +1,13 @@
 use bulletproofs::RangeProof;
-use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
 use curve25519_dalek::{
     ristretto::{CompressedRistretto, RistrettoPoint},
     scalar::Scalar,
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
+use sp_std::prelude::*;
 
 use core::ops::{Deref, DerefMut};
 

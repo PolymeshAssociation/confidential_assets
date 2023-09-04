@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
+use sp_std::prelude::*;
 
 /// The domain label for the encrypting the same value proof.
 pub const CIPHERTEXT_SAME_VALUE_PROOF_FINAL_RESPONSE_LABEL: &[u8] =

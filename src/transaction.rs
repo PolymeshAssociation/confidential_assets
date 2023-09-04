@@ -28,6 +28,7 @@ use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::prelude::*;
 
 pub const MAX_AUDITORS: usize = 4;
 
