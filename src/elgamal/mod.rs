@@ -75,6 +75,24 @@ impl TypeInfo for CipherText {
     }
 }
 
+impl CipherText {
+    /// Create a `CipherText` when the `value` isn't secret (asset minting).
+    pub fn value(value: Scalar) -> Self {
+        let gens = PedersenGens::default();
+        Self {
+            x: Default::default(),
+            y: (value * gens.B).into(),
+        }
+    }
+
+    /// Create a `CipherText` with zero value and blinding factors.
+    ///
+    /// Useful for account initialization (zero balance).
+    pub fn zero() -> Self {
+        Default::default()
+    }
+}
+
 // ------------------------------------------------------------------------
 // Arithmetic operations on the ciphertext.
 // ------------------------------------------------------------------------
@@ -462,6 +480,44 @@ mod tests {
         let (_, cipher) = elg_pub.encrypt_value(balance_witness.value, &mut rng);
         let balance2 = elg_secret.decrypt(&cipher).unwrap();
         assert_eq!(balance2, balance);
+    }
+
+    #[test]
+    #[wasm_bindgen_test]
+    fn basic_enc_dec_zero_blinding() {
+        let mut rng = StdRng::from_seed(SEED_1);
+        let elg_secret = ElgamalSecretKey::new(Scalar::random(&mut rng));
+        let elg_pub = elg_secret.get_public_key();
+
+        // Test encrypting balance.
+        let balance: Balance = 256;
+        let blinding = Scalar::zero();
+        let balance_witness = CommitmentWitness {
+            value: balance.into(),
+            blinding,
+        };
+        // Test encrypt().
+        let cipher = elg_pub.encrypt(&balance_witness);
+        let balance1 = elg_secret.decrypt(&cipher).unwrap();
+        assert_eq!(balance1, balance);
+
+        // Test creation of CipherText without using a blinding.
+        let cipher2 = CipherText::value(Scalar::from(balance));
+        assert_eq!(cipher, cipher2);
+        let balance2 = elg_secret.decrypt(&cipher2).unwrap();
+        assert_eq!(balance2, balance);
+    }
+
+    #[test]
+    #[wasm_bindgen_test]
+    fn basic_enc_dec_zero_ciphertext() {
+        let mut rng = StdRng::from_seed(SEED_1);
+        let elg_secret = ElgamalSecretKey::new(Scalar::random(&mut rng));
+
+        let cipher = CipherText::zero();
+        // Test decrypting zero.
+        let balance = elg_secret.decrypt(&cipher).unwrap();
+        assert_eq!(balance, 0);
     }
 
     #[test]
