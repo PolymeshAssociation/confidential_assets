@@ -21,9 +21,6 @@ use crate::{
     Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
 };
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
@@ -31,26 +28,25 @@ use scale_info::TypeInfo;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 
-pub const MAX_AUDITORS: usize = 8;
+pub const MAX_AUDITORS: u32 = 4;
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
 #[derive(Copy, Clone, Debug, Encode, Decode, TypeInfo, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct AuditorId(#[codec(compact)] pub u64);
+pub struct AuditorId(#[codec(compact)] pub u32);
 
 #[derive(Clone, Encode, Decode, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct AuditorPayload {
+pub struct Auditor {
     pub encrypted_hint: CipherTextHint,
     pub amount_idx: u8,
 }
 
+pub type Auditors = BTreeMap<AuditorId, Auditor>;
+
 /// Holds the proofs and memo of the confidential transaction sent by the sender.
 #[derive(Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConfidentialTransferProof {
     /// Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
     pub amounts: CipherTextMultiKey,
@@ -67,7 +63,7 @@ pub struct ConfidentialTransferProof {
     /// Bulletproof range proofs for "Non negative amount" and "Enough funds".
     pub range_proofs: InRangeProof,
     /// Auditor id lookup and hints.
-    pub auditors: BTreeMap<AuditorId, AuditorPayload>,
+    pub auditors: Auditors,
 }
 
 impl ConfidentialTransferProof {
@@ -77,7 +73,7 @@ impl ConfidentialTransferProof {
         auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
     ) -> Result<Vec<ElgamalPublicKey>> {
         ensure!(
-            auditors_enc_pub_keys.len() <= MAX_AUDITORS,
+            auditors_enc_pub_keys.len() <= MAX_AUDITORS as usize,
             Error::TooManyAuditors
         );
         // All public keys.
@@ -171,7 +167,7 @@ impl ConfidentialTransferProof {
             .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
                 (
                     *auditor_id,
-                    AuditorPayload {
+                    Auditor {
                         amount_idx: (idx + 2) as u8,
                         encrypted_hint: CipherTextHint::new(&witness, rng),
                     },
@@ -202,10 +198,13 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
-        ensure!(self.auditors.len() <= MAX_AUDITORS, Error::TooManyAuditors);
+        ensure!(
+            self.auditors.len() <= MAX_AUDITORS as usize,
+            Error::TooManyAuditors
+        );
         ensure!(
             self.auditors.len() == auditors_enc_pub_keys.len(),
-            Error::AuditorPayloadError
+            Error::WrongNumberOfAuditors
         );
 
         // Verify that the encrypted amounts are equal.
@@ -270,7 +269,7 @@ impl ConfidentialTransferProof {
                     .ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
                 auditor_enc_key.const_time_decrypt(&enc_amount)
             }
-            None => Err(Error::AuditorPayloadError),
+            None => Err(Error::AuditorVerifyError),
         }
     }
 
@@ -473,7 +472,7 @@ mod tests {
                 &mediator_auditor_list,
                 &mut rng,
             );
-            assert_err!(result, Error::AuditorPayloadError);
+            assert_err!(result, Error::WrongNumberOfAuditors);
             return;
         }
 
@@ -486,7 +485,7 @@ mod tests {
         );
 
         if validator_check_fails {
-            assert_err!(result, Error::AuditorPayloadError);
+            assert_err!(result, Error::WrongNumberOfAuditors);
             return;
         }
 
@@ -522,7 +521,7 @@ mod tests {
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (AuditorId(index as u64), auditor_keys)
+                (AuditorId(index), auditor_keys)
             })
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();

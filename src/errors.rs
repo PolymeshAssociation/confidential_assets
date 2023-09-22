@@ -28,6 +28,13 @@ pub enum Error {
     )]
     TooManyAuditors,
 
+    /// Wrong number of auditors.
+    #[cfg_attr(
+        feature = "std",
+        error("The number of auditor keys doesn't match the number of auditors in the proof")
+    )]
+    WrongNumberOfAuditors,
+
     /// A proof verification error occurred.
     #[cfg_attr(feature = "std", error("A proof verification error occurred"))]
     VerificationError,
@@ -128,12 +135,12 @@ pub enum Error {
     #[cfg_attr(feature = "std", error(transparent))]
     BulletproofProvingError(bulletproofs::ProofError),
 
-    /// The auditors' payload does not match the compliance rules.
+    /// The auditor failed to verify confidential transaction.
     #[cfg_attr(
         feature = "std",
-        error("The auditors' payload does not match the compliance rules.")
+        error("The auditor failed to verify confidential transaction.")
     )]
-    AuditorPayloadError,
+    AuditorVerifyError,
 }
 
 impl From<bulletproofs::ProofError> for Error {

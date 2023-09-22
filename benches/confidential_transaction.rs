@@ -16,7 +16,7 @@ use confidential_assets::{
         encryption_proofs::single_property_prover,
         range_proof::InRangeProof,
     },
-    transaction::{AuditorId, AuditorPayload, ConfidentialTransferProof, MAX_AUDITORS},
+    transaction::{Auditor, AuditorId, Auditors, ConfidentialTransferProof, MAX_AUDITORS},
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 use rand::thread_rng;
@@ -55,7 +55,7 @@ struct SenderProofGen {
     range_proofs: Option<InRangeProof>,
     refreshed_enc_balance: Option<CipherText>,
     balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
-    auditors: BTreeMap<AuditorId, AuditorPayload>,
+    auditors: Auditors,
 }
 
 impl SenderProofGen {
@@ -193,7 +193,7 @@ impl SenderProofGen {
                     .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
                         (
                             *auditor_id,
-                            AuditorPayload {
+                            Auditor {
                                 amount_idx: (idx + 2) as u8,
                                 encrypted_hint: CipherTextHint::new(&self.witness, rng),
                             },
@@ -414,7 +414,7 @@ fn bench_transaction_auditor(
 }
 fn bench_transaction(c: &mut Criterion) {
     let mut rng = thread_rng();
-    let auditors = utility::generate_auditors(MAX_AUDITORS, &mut rng);
+    let auditors = utility::generate_auditors(MAX_AUDITORS as usize, &mut rng);
     let auditor_keys: BTreeMap<_, _> = auditors
         .iter()
         .map(|(id, keys)| (*id, keys.public))
