@@ -33,7 +33,7 @@ pub fn generate_auditors<R: RngCore + CryptoRng>(
                 secret: secret_key,
             };
 
-            (AuditorId(n as u32), keys)
+            (AuditorId(n as u64), keys)
         })
         .collect()
 }

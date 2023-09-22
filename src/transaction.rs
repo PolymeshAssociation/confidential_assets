@@ -27,18 +27,19 @@ use serde::{Deserialize, Serialize};
 use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
+use scale_info::TypeInfo;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 
-pub const MAX_AUDITORS: usize = 4;
+pub const MAX_AUDITORS: usize = 8;
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
-#[derive(Copy, Clone, Debug, Encode, Decode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Encode, Decode, TypeInfo, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct AuditorId(#[codec(compact)] pub u32);
+pub struct AuditorId(#[codec(compact)] pub u64);
 
 #[derive(Clone, Encode, Decode, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -521,7 +522,7 @@ mod tests {
         let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
             .map(|index| {
                 let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (AuditorId(index as u32), auditor_keys)
+                (AuditorId(index as u64), auditor_keys)
             })
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();
