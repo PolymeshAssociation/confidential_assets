@@ -176,7 +176,7 @@ impl ElgamalSecretKey {
 }
 
 /// Compressed ElgamalPublicKey.
-#[derive(Copy, Clone, Default, Encode, Decode, TypeInfo, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Default, Encode, Decode, TypeInfo, PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub struct CompressedElgamalPublicKey([u8; 32]);
 
 impl CompressedElgamalPublicKey {
