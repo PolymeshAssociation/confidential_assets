@@ -7,8 +7,6 @@ use bulletproofs::{BulletproofGens, PedersenGens, RangeProof};
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 use crate::errors::Result;
 
@@ -20,7 +18,6 @@ const RANGE_PROOF_LABEL: &[u8] = b"PolymeshRangeProof";
 
 /// Holds the non-interactive range proofs, equivalent of L_range of MERCAT paper.
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InRangeProof(pub RangeProof);
 
 impl InRangeProof {

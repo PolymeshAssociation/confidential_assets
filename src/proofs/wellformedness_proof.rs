@@ -18,8 +18,6 @@ use bulletproofs::PedersenGens;
 use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 use codec::{Decode, Encode};
 
@@ -29,14 +27,12 @@ pub const WELLFORMEDNESS_PROOF_FINAL_RESPONSE_LABEL: &[u8] = b"PolymeshWellforme
 pub const WELLFORMEDNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshWellformednessProofChallenge";
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WellformednessFinalResponse {
     z1: WrappedScalar,
     z2: WrappedScalar,
 }
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WellformednessInitialMessage {
     a: WrappedCompressedRistretto,
     b: WrappedCompressedRistretto,

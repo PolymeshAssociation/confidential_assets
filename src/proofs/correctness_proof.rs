@@ -16,8 +16,6 @@ use bulletproofs::PedersenGens;
 use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
@@ -33,7 +31,6 @@ pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessChalle
 // ------------------------------------------------------------------------
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CorrectnessFinalResponse(WrappedScalar);
 
 impl From<Scalar> for CorrectnessFinalResponse {
@@ -43,7 +40,6 @@ impl From<Scalar> for CorrectnessFinalResponse {
 }
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CorrectnessInitialMessage {
     pub a: WrappedCompressedRistretto,
     pub b: WrappedCompressedRistretto,

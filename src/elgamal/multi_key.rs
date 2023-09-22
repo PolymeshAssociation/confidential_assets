@@ -7,15 +7,11 @@ use crate::{
 
 use bulletproofs::PedersenGens;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use codec::{Decode, Encode};
 use sp_std::prelude::*;
 
 /// Encrypt a secret using multiple public keys.
 #[derive(Clone, Encode, Decode, Default, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextMultiKey {
     pub x: Vec<WrappedCompressedRistretto>,
     pub y: WrappedCompressedRistretto,

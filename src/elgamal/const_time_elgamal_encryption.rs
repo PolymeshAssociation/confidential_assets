@@ -29,9 +29,6 @@ use bulletproofs::PedersenGens;
 use curve25519_dalek::{ristretto::RistrettoPoint, scalar::Scalar};
 use rand_core::{CryptoRng, RngCore};
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use codec::{Decode, Encode};
 use sha3::{digest::FixedOutput, Digest, Sha3_256};
 use sp_std::prelude::*;
@@ -44,7 +41,6 @@ use crate::{
 };
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextHint {
     y: WrappedCompressedRistretto,
     z: [u8; 32],
@@ -96,7 +92,6 @@ impl CipherTextHint {
 /// 1. it is not homomorphic. 2. all asset proofs prove properties of
 /// a twisted Elgamal cipher text.
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextWithHint {
     // The twisted Elgamal cipher text.
     cipher: CipherText,

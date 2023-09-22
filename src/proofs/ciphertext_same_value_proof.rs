@@ -17,8 +17,6 @@ use bulletproofs::PedersenGens;
 use curve25519_dalek::{constants::RISTRETTO_BASEPOINT_POINT, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
@@ -37,14 +35,12 @@ pub const CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL: &[u8] =
 // ------------------------------------------------------------------------
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextSameValueFinalResponse {
     z1: WrappedScalar,
     z2: WrappedScalar,
 }
 
 #[derive(PartialEq, Clone, Encode, Decode, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CipherTextSameValueInitialMessage {
     a: Vec<WrappedCompressedRistretto>,
     b: WrappedCompressedRistretto,
