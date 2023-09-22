@@ -28,7 +28,7 @@ use scale_info::TypeInfo;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 
-pub const MAX_AUDITORS: u32 = 4;
+pub const MAX_AUDITORS: u32 = 8;
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
