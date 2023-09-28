@@ -18,7 +18,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
@@ -176,7 +176,7 @@ impl ElgamalSecretKey {
 }
 
 /// Compressed ElgamalPublicKey.
-#[derive(Copy, Clone, Default, Encode, Decode, TypeInfo, PartialOrd, Ord, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Default, Encode, Decode, MaxEncodedLen, TypeInfo, PartialOrd, Ord, PartialEq, Eq, Debug)]
 pub struct CompressedElgamalPublicKey([u8; 32]);
 
 impl CompressedElgamalPublicKey {
