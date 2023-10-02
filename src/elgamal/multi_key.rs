@@ -49,6 +49,11 @@ impl CipherTextMultiKey {
             y: y.into(),
         })
     }
+
+    /// Returns the number of keys used to encrypt the value.
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
 }
 
 /// Builder for encrypting a secret using multiple public keys.

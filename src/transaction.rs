@@ -198,17 +198,21 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
+        let a_len = self.auditors.len();
+        ensure!(a_len <= MAX_AUDITORS as usize, Error::TooManyAuditors);
         ensure!(
-            self.auditors.len() <= MAX_AUDITORS as usize,
-            Error::TooManyAuditors
-        );
-        ensure!(
-            self.auditors.len() == auditors_enc_pub_keys.len(),
+            a_len == auditors_enc_pub_keys.len(),
             Error::WrongNumberOfAuditors
         );
 
-        // Verify that the encrypted amounts are equal.
+        // Collect all public keys (Sender, Receiver, Auditors...).
         let keys = Self::keys(sender_account, receiver_account, auditors_enc_pub_keys)?;
+        // Ensure that the transaction amount was encrypyted with all keys.
+        ensure!(
+            keys.len() == self.amounts.len(),
+            Error::WrongNumberOfAuditors
+        );
+        // Verify that the encrypted amounts are equal.
         single_property_verifier(
             &CipherTextSameValueVerifier {
                 keys,
@@ -283,6 +287,10 @@ impl ConfidentialTransferProof {
 
     pub fn receiver_amount(&self) -> CipherText {
         self.amount(1)
+    }
+
+    pub fn auditor_count(&self) -> usize {
+        self.auditors.len()
     }
 }
 
