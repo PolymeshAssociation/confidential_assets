@@ -22,6 +22,8 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 use sp_std::prelude::*;
 
+use core::cmp::Ordering;
+
 pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
@@ -247,6 +249,20 @@ impl ElgamalPublicKey {
             CommitmentWitness { value, blinding },
             self.encrypt_helper(value, blinding),
         )
+    }
+}
+
+impl PartialOrd for ElgamalPublicKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ElgamalPublicKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let l = self.pub_key.compress().to_bytes();
+        let r = other.pub_key.compress().to_bytes();
+        l.cmp(&r)
     }
 }
 
