@@ -29,6 +29,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 
 pub const MAX_AUDITORS: u32 = 8;
+pub const MAX_TOTAL_SUPPLY: u64 = 1_000_000_000_000u64;
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -

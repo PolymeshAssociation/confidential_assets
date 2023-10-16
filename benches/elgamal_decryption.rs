@@ -95,6 +95,7 @@ fn bench_elgamal(c: &mut Criterion) {
         _ => None,
     })
     .collect();
+    #[cfg(not(feature = "discrete_log"))]
     {
         for (value, enc_value, s_value) in &values {
             let now = std::time::Instant::now();
