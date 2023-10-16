@@ -20,6 +20,7 @@ fn bench_elgamal(c: &mut Criterion) {
         });
     }
 
+    #[cfg(not(feature = "discrete_log"))]
     for i in 3..8 {
         let value = (10 as Balance).pow(i);
         let enc_value = elg_pub.encrypt_value(value.into(), &mut rng).1;
@@ -43,12 +44,12 @@ fn bench_elgamal(c: &mut Criterion) {
             &enc_value,
             |b, enc_value| {
                 b.iter(|| {
-                    assert_eq!(value, elg_secret.decrypt_discrete_log(enc_value).unwrap());
+                    assert_eq!(value, elg_secret.decrypt(enc_value).unwrap());
                 })
             },
         );
     }
-    #[cfg(feature = "rayon")]
+    #[cfg(all(feature = "rayon", not(feature = "discrete_log")))]
     for i in 3..8 {
         let value = (10 as Balance).pow(i);
         let enc_value = elg_pub.encrypt_value(value.into(), &mut rng).1;
@@ -107,7 +108,7 @@ fn bench_elgamal(c: &mut Criterion) {
             }
         }
     }
-    #[cfg(feature = "rayon")]
+    #[cfg(all(feature = "rayon", not(feature = "discrete_log")))]
     {
         for (value, enc_value, s_value) in &values {
             let now = std::time::Instant::now();
@@ -126,7 +127,7 @@ fn bench_elgamal(c: &mut Criterion) {
         for (value, enc_value, s_value) in &values {
             let now = std::time::Instant::now();
             print!("--- time to decrypt_discrete_log {}: ", s_value);
-            assert_eq!(*value, elg_secret.decrypt_discrete_log(&enc_value).unwrap());
+            assert_eq!(*value, elg_secret.decrypt(&enc_value).unwrap());
             let secs = now.elapsed().as_secs_f32();
             println!("{:.3?} secs", secs);
             // Stop if elapsed time above 1 second.

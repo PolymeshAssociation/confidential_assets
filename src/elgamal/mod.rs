@@ -281,6 +281,7 @@ impl ElgamalSecretKey {
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
+    #[cfg(not(feature = "discrete_log"))]
     pub fn decrypt(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
@@ -299,7 +300,7 @@ impl ElgamalSecretKey {
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
     #[cfg(feature = "discrete_log")]
-    pub fn decrypt_discrete_log(&self, cipher_text: &CipherText) -> Result<Balance> {
+    pub fn decrypt(&self, cipher_text: &CipherText) -> Result<Balance> {
         let gens = PedersenGens::default();
         // value * h = Y - X / secret_key
         let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
@@ -313,7 +314,7 @@ impl ElgamalSecretKey {
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
     #[cfg(feature = "discrete_log")]
-    pub fn decrypt_discrete_log_with_hint(
+    pub fn decrypt_with_hint(
         &self,
         cipher_text: &CipherText,
         min: Balance,
@@ -334,6 +335,7 @@ impl ElgamalSecretKey {
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
+    #[cfg(not(feature = "discrete_log"))]
     pub fn decrypt_with_hint(
         &self,
         cipher_text: &CipherText,
@@ -356,7 +358,7 @@ impl ElgamalSecretKey {
     }
 
     /// Decrypt a cipher text that is known to encrypt a Balance.
-    #[cfg(feature = "rayon")]
+    #[cfg(all(feature = "rayon", not(feature = "discrete_log")))]
     pub fn decrypt_parallel(&self, cipher_text: &CipherText) -> Result<Balance> {
         use rayon::prelude::*;
         use std::sync::atomic::{AtomicBool, Ordering};
