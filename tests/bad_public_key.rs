@@ -13,9 +13,7 @@ use confidential_assets::{
     },
     testing::{self, TestSenderProofGen},
     transaction::MAX_AUDITORS,
-    ElgamalKeys,
-    ElgamalPublicKey,
-    Scalar,
+    ElgamalKeys, ElgamalPublicKey, Scalar,
 };
 use rand::thread_rng;
 use std::collections::BTreeMap;
@@ -29,7 +27,8 @@ pub fn bad_public_key() {
         .map(|(id, keys)| (*id, keys.public))
         .collect();
     // Create sender account with a balance.
-    let (sender_account, sender_init_balance) = testing::create_account_with_amount(&mut rng, 1_000);
+    let (sender_account, sender_init_balance) =
+        testing::create_account_with_amount(&mut rng, 1_000);
     let sender_pub_account = sender_account.public.clone();
 
     let gens = PedersenGens::default();
@@ -39,7 +38,7 @@ pub fn bad_public_key() {
 
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
-    let z = Scalar::zero();//Scalar::random(&mut rng);
+    let z = Scalar::zero(); //Scalar::random(&mut rng);
     let a = y_diff;
     let b = gens.B_blinding;
     let initial_message = CipherTextRefreshmentInitialMessage {
@@ -47,7 +46,11 @@ pub fn bad_public_key() {
         b: b.into(),
     };
     initial_message.update_transcript(&mut transcript).unwrap();
-    let c = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL).unwrap().x().clone();
+    let c = transcript
+        .scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+        .unwrap()
+        .x()
+        .clone();
 
     let final_response = CipherTextRefreshmentFinalResponse(z.into());
 
@@ -56,7 +59,7 @@ pub fn bad_public_key() {
     let buf = [0u8; 96];
     let mut sender_account: ElgamalKeys = Decode::decode(&mut &buf[..]).unwrap();
     sender_account.public = ElgamalPublicKey {
-      pub_key: bad_pk.into(),
+        pub_key: bad_pk.into(),
     };
     let sender_fake_pub_account = sender_account.public.clone();
 
@@ -85,14 +88,12 @@ pub fn bad_public_key() {
     // Fake refreshed balance and refreshment proof.
     // Refresh the encrypted balance and prove that the refreshment was done
     // correctly.
-    let witness =
-        CommitmentWitness::new(amount.into(), proof_gen.balance_refresh_enc_blinding);
+    let witness = CommitmentWitness::new(amount.into(), proof_gen.balance_refresh_enc_blinding);
     proof_gen.refreshed_enc_balance = Some(sender_fake_pub_account.encrypt(&witness));
     proof_gen.last_stage = 4;
 
-    proof_gen.balance_refreshed_same_proof = Some(
-      (initial_message.clone(), final_response.clone())
-    );
+    proof_gen.balance_refreshed_same_proof =
+        Some((initial_message.clone(), final_response.clone()));
     proof_gen.last_stage = 5;
 
     proof_gen.run_to_stage(6, &mut rng).expect("Ok");
@@ -116,5 +117,8 @@ pub fn bad_public_key() {
         &mut rng,
     );
     eprintln!("verify sender proof: {res:?}");
-    assert_eq!(res, Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 1 }));
+    assert_eq!(
+        res,
+        Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 1 })
+    );
 }
