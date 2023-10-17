@@ -105,7 +105,11 @@ impl TestSenderProofGen {
         })
     }
 
-    pub fn run_to_stage<T: RngCore + CryptoRng>(&mut self, to_stage: u32, rng: &mut T) -> Result<()> {
+    pub fn run_to_stage<T: RngCore + CryptoRng>(
+        &mut self,
+        to_stage: u32,
+        rng: &mut T,
+    ) -> Result<()> {
         while self.last_stage < to_stage {
             self.run_next_stage(rng)?;
         }

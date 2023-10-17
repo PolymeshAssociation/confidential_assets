@@ -559,14 +559,22 @@ mod tests {
         // Change the order of auditors lists on the mediator and validator sides.
         // The tests still must pass.
         let mediator_auditor_list = vec![
-          auditors_vec[5], auditors_vec[0], auditors_vec[2],
-          auditors_vec[3], auditors_vec[6], auditors_vec[1],
-          auditors_vec[4],
+            auditors_vec[5],
+            auditors_vec[0],
+            auditors_vec[2],
+            auditors_vec[3],
+            auditors_vec[6],
+            auditors_vec[1],
+            auditors_vec[4],
         ];
         let validator_auditor_list = vec![
-          auditors_vec[2], auditors_vec[6], auditors_vec[3],
-          auditors_vec[0], auditors_vec[4], auditors_vec[5],
-          auditors_vec[1],
+            auditors_vec[2],
+            auditors_vec[6],
+            auditors_vec[3],
+            auditors_vec[0],
+            auditors_vec[4],
+            auditors_vec[5],
+            auditors_vec[1],
         ];
 
         let mediator_auditor_list = mediator_auditor_list;
