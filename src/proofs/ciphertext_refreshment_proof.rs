@@ -40,12 +40,12 @@ pub const CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL: &[u8] =
 // ------------------------------------------------------------------------
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
-pub struct CipherTextRefreshmentFinalResponse(WrappedScalar);
+pub struct CipherTextRefreshmentFinalResponse(pub WrappedScalar);
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Debug)]
 pub struct CipherTextRefreshmentInitialMessage {
-    a: WrappedCompressedRistretto,
-    b: WrappedCompressedRistretto,
+    pub a: WrappedCompressedRistretto,
+    pub b: WrappedCompressedRistretto,
 }
 
 /// A default implementation used for testing.
