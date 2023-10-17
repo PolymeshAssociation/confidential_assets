@@ -32,12 +32,16 @@ pub fn bad_public_key() {
     let (sender_account, sender_init_balance) = testing::create_account_with_amount(&mut rng, 1_000);
     let sender_pub_account = sender_account.public.clone();
 
+    let gens = PedersenGens::default();
+
+    let refresh_blinding = Scalar::one();
+    let y_diff = *sender_init_balance.y - (refresh_blinding * gens.B_blinding);
+
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
-    let gens = PedersenGens::default();
-    let rand_commitment = Scalar::random(&mut rng);
-    let a = rand_commitment * gens.B;
-    let b = rand_commitment * gens.B_blinding;
+    let z = Scalar::zero();//Scalar::random(&mut rng);
+    let a = y_diff;
+    let b = gens.B_blinding;
     let initial_message = CipherTextRefreshmentInitialMessage {
         a: a.into(),
         b: b.into(),
@@ -45,7 +49,6 @@ pub fn bad_public_key() {
     initial_message.update_transcript(&mut transcript).unwrap();
     let c = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL).unwrap().x().clone();
 
-    let z = Scalar::random(&mut rng);
     let final_response = CipherTextRefreshmentFinalResponse(z.into());
 
     // Bad sender account.
@@ -71,6 +74,7 @@ pub fn bad_public_key() {
         amount,
         &mut rng,
     );
+    proof_gen.balance_refresh_enc_blinding = refresh_blinding;
     // Skip sender balance check.
     proof_gen.last_stage = 1;
 
@@ -86,21 +90,8 @@ pub fn bad_public_key() {
     proof_gen.refreshed_enc_balance = Some(sender_fake_pub_account.encrypt(&witness));
     proof_gen.last_stage = 4;
 
-    let refreshed_enc_balance = proof_gen.refreshed_enc_balance.unwrap();
     proof_gen.balance_refreshed_same_proof = Some(
-        single_property_prover(
-            CipherTextRefreshmentProverAwaitingChallenge::new(
-                proof_gen.sender_sec.clone(),
-                proof_gen.sender_init_balance,
-                refreshed_enc_balance,
-                &proof_gen.gens,
-            ),
-            &mut rng,
-        )
-        .unwrap(),
-    );
-    proof_gen.balance_refreshed_same_proof = Some(
-      (initial_message, final_response)
+      (initial_message.clone(), final_response.clone())
     );
     proof_gen.last_stage = 5;
 
@@ -108,6 +99,15 @@ pub fn bad_public_key() {
 
     let tx = proof_gen.finalize(&mut rng).expect("Ok");
 
+    let z = *final_response.0;
+    let a = initial_message.a.decompress();
+    let b = initial_message.b.decompress();
+    let x = *sender_init_balance.x - *tx.refreshed_enc_balance.x;
+    let y = *sender_init_balance.y - *tx.refreshed_enc_balance.y;
+    // This check fails like it should.
+    assert!(z * y != a + c * x);
+    // ATTACK: causes this to pass.
+    assert!(z * gens.B_blinding == b + (c * *sender_fake_pub_account.pub_key));
     let res = tx.verify(
         &sender_pub_account,
         &sender_init_balance,
