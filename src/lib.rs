@@ -23,6 +23,9 @@ pub mod elgamal;
 pub mod proofs;
 pub mod transaction;
 
+#[doc(hidden)]
+pub mod testing;
+
 pub use elgamal::{
     CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
 };
