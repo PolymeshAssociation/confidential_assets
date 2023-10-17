@@ -572,7 +572,8 @@ mod tests {
             .unwrap();
         assert_eq!(balance1, balance);
         // Wrong range.
-        let balance1 = elg_secret.decrypt_with_hint(&cipher, 5_000, 15_000);
+        let balance1 = elg_secret.decrypt_with_hint(&cipher, 50_000, 65_000);
+        eprintln!("-- {balance1:?}");
         assert!(balance1.is_none());
 
         // Test encrypt_value().
@@ -582,7 +583,7 @@ mod tests {
             .unwrap();
         assert_eq!(balance2, balance);
         // Wrong range.
-        let balance2 = elg_secret.decrypt_with_hint(&cipher, 5_000, 15_000);
+        let balance2 = elg_secret.decrypt_with_hint(&cipher, 50_000, 65_000);
         assert!(balance2.is_none());
     }
 

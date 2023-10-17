@@ -473,17 +473,19 @@ mod tests {
             .auditor_verify(mediator_id, &mediator_enc_keys)
             .unwrap();
 
+        let result = ctx_init.verify(
+            &sender_account.public,
+            &sender_init_balance,
+            &receiver_account.public,
+            &mediator_auditor_list,
+            &mut rng,
+        );
+        eprintln!("-- mediator res = {result:?}");
         if mediator_check_fails {
-            let result = ctx_init.verify(
-                &sender_account.public,
-                &sender_init_balance,
-                &receiver_account.public,
-                &mediator_auditor_list,
-                &mut rng,
-            );
             assert_err!(result, Error::WrongNumberOfAuditors);
             return;
         }
+        assert!(result.is_ok());
 
         let result = ctx_init.verify(
             &sender_account.public,
@@ -492,12 +494,12 @@ mod tests {
             &validator_auditor_list,
             &mut rng,
         );
+        eprintln!("-- validator res = {result:?}");
 
         if validator_check_fails {
             assert_err!(result, Error::WrongNumberOfAuditors);
             return;
         }
-
         assert!(result.is_ok());
 
         // ----------------------- Processing
@@ -556,8 +558,16 @@ mod tests {
 
         // Change the order of auditors lists on the mediator and validator sides.
         // The tests still must pass.
-        let mediator_auditor_list = vec![auditors_vec[1], auditors_vec[0], auditors_vec[2]];
-        let validator_auditor_list = vec![auditors_vec[2], auditors_vec[1], auditors_vec[0]];
+        let mediator_auditor_list = vec![
+          auditors_vec[5], auditors_vec[0], auditors_vec[2],
+          auditors_vec[3], auditors_vec[6], auditors_vec[1],
+          auditors_vec[4],
+        ];
+        let validator_auditor_list = vec![
+          auditors_vec[2], auditors_vec[6], auditors_vec[3],
+          auditors_vec[0], auditors_vec[4], auditors_vec[5],
+          auditors_vec[1],
+        ];
 
         let mediator_auditor_list = mediator_auditor_list;
         let validator_auditor_list = validator_auditor_list;
