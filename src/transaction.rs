@@ -249,15 +249,29 @@ impl ConfidentialTransferProof {
     }
 
     /// Receiver verify the transaction amount using their private key.
-    pub fn receiver_verify(&self, receiver_account: ElgamalKeys, amount: Balance) -> Result<()> {
-        // Check that the amount is correct.
-        receiver_account
-            .verify(&self.receiver_amount(), &amount.into())
-            .map_err(|_| Error::TransactionAmountMismatch {
-                expected_amount: amount,
-            })?;
+    pub fn receiver_verify(
+        &self,
+        receiver_account: ElgamalKeys,
+        expected_amount: Option<Balance>,
+    ) -> Result<Balance> {
+        let enc_amount = self.receiver_amount();
+        let amount = match expected_amount {
+            Some(expected_amount) => {
+                // Check that the amount is correct.
+                receiver_account
+                    .verify(&enc_amount, &expected_amount.into())
+                    .map_err(|_| Error::TransactionAmountMismatch { expected_amount })?;
+                expected_amount
+            }
+            None => {
+                // Decrypt the transaction amount using the receiver's secret.
+                receiver_account
+                    .decrypt_with_hint(&enc_amount, 0, MAX_TOTAL_SUPPLY)
+                    .ok_or(Error::CipherTextDecryptionError)?
+            }
+        };
 
-        Ok(())
+        Ok(amount)
     }
 
     /// Verify the initialized transaction.
@@ -266,13 +280,27 @@ impl ConfidentialTransferProof {
         &self,
         auditor_id: AuditorId,
         auditor_enc_key: &ElgamalKeys,
+        expected_amount: Option<Balance>,
     ) -> Result<Balance> {
         match self.auditors.get(&auditor_id) {
             Some(auditor) => {
-                let enc_amount = auditor
-                    .encrypted_hint
-                    .ciphertext_with_hint(self.amount(auditor.amount_idx.into()));
-                auditor_enc_key.const_time_decrypt(&enc_amount)
+                let enc_amount = self.amount(auditor.amount_idx.into());
+                let amount = match expected_amount {
+                    Some(expected_amount) => {
+                        // Check that the amount is correct.
+                        auditor_enc_key
+                            .verify(&enc_amount, &expected_amount.into())
+                            .map_err(|_| Error::TransactionAmountMismatch { expected_amount })?;
+                        expected_amount
+                    }
+                    None => {
+                        // Add encrypted hint to `CipherText` for const-time decrypt.
+                        let enc_amount_with_hint =
+                            auditor.encrypted_hint.ciphertext_with_hint(enc_amount);
+                        auditor_enc_key.const_time_decrypt(&enc_amount_with_hint)?
+                    }
+                };
+                Ok(amount)
             }
             None => Err(Error::AuditorVerifyError),
         }
@@ -371,12 +399,12 @@ mod tests {
 
         // Finalize the transaction and check its state.
         ctx_init_data
-            .receiver_verify(receiver_account.clone(), amount)
+            .receiver_verify(receiver_account.clone(), Some(amount))
             .unwrap();
 
         // Justify the transaction
         let _result = ctx_init_data
-            .auditor_verify(AuditorId(0), &mediator_account)
+            .auditor_verify(AuditorId(0), &mediator_account, None)
             .unwrap();
 
         assert!(ctx_init_data
@@ -465,12 +493,12 @@ mod tests {
 
         // Finalize the transaction and check its state
         ctx_init
-            .receiver_verify(receiver_account.clone(), amount)
+            .receiver_verify(receiver_account.clone(), Some(amount))
             .unwrap();
 
         // Justify the transaction
         ctx_init
-            .auditor_verify(mediator_id, &mediator_enc_keys)
+            .auditor_verify(mediator_id, &mediator_enc_keys, None)
             .unwrap();
 
         let result = ctx_init.verify(
@@ -520,7 +548,7 @@ mod tests {
 
         // ----------------------- Auditing
         for auditor in auditors_list {
-            assert!(ctx_init.auditor_verify(auditor.0, &auditor.1,).is_ok());
+            assert!(ctx_init.auditor_verify(auditor.0, &auditor.1, None).is_ok());
         }
     }
 

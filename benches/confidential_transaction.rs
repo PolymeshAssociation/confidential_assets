@@ -182,15 +182,15 @@ fn bench_transaction_receiver(
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, _, tx) in transactions {
-        tx.receiver_verify(receiver_account.clone(), *amount)
+        tx.receiver_verify(receiver_account.clone(), Some(*amount))
             .expect("Receiver verify");
         group.bench_with_input(
             BenchmarkId::new("Receiver", *amount),
             &(amount, tx.clone()),
             |b, (&amount, tx)| {
                 b.iter(|| {
-                    tx.receiver_verify(receiver_account.clone(), amount)
-                        .unwrap()
+                    tx.receiver_verify(receiver_account.clone(), Some(amount))
+                        .expect("Receiver verify")
                 })
             },
         );
@@ -212,7 +212,7 @@ fn bench_transaction_auditor(
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx.auditor_verify(id, keys).unwrap();
+                    init_tx.auditor_verify(id, keys, None).unwrap();
                 })
             },
         );
