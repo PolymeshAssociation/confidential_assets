@@ -10,9 +10,9 @@ use crate::errors::{Error, Result};
 use crate::proofs::transcript::{TranscriptProtocol, UpdateTranscript};
 
 /// The domain label for the encryption proofs.
-pub const ENCRYPTION_PROOFS_LABEL: &[u8] = b"PolymeshEncryptionProofs";
+pub const ENCRYPTION_PROOFS_LABEL: &[u8] = b"PolymeshEncryptionProof";
 /// The domain label for the challenge.
-pub const ENCRYPTION_PROOFS_CHALLENGE_LABEL: &[u8] = b"PolymeshEncryptionProofsChallenge";
+pub const ENCRYPTION_PROOFS_CHALLENGE_LABEL: &[u8] = b"PolymeshEncryptionFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Sigma Protocol's Prover and Verifier Interfaces
@@ -149,13 +149,29 @@ pub fn single_property_prover<
     >,
 > {
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
+    single_property_prover_with_transcript(&mut transcript, prover_ac, rng)
+}
 
+pub fn single_property_prover_with_transcript<
+    T: RngCore + CryptoRng,
+    ProverAwaitingChallenge: ProofProverAwaitingChallenge,
+>(
+    transcript: &mut Transcript,
+    prover_ac: ProverAwaitingChallenge,
+    rng: &mut T,
+) -> Result<
+    ZKProofResponse<
+        ProverAwaitingChallenge::ZKInitialMessage,
+        ProverAwaitingChallenge::ZKFinalResponse,
+    >,
+> {
     let mut transcript_rng = prover_ac.create_transcript_rng(rng, &transcript);
     let (prover, initial_message) = prover_ac.generate_initial_message(&mut transcript_rng);
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(&mut transcript)?;
-    let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)?;
+    initial_message.update_transcript(transcript)?;
+    let challenge_label = ProverAwaitingChallenge::ZKInitialMessage::challenge_label();
+    let challenge = transcript.scalar_challenge(challenge_label)?;
 
     let final_response = prover.apply_challenge(&challenge);
 
@@ -175,13 +191,22 @@ pub fn single_property_verifier<Verifier: ProofVerifier>(
     verifier: &Verifier,
     proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
 ) -> Result<()> {
+    let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
+    single_property_verifier_with_transcript(&mut transcript, verifier, proof)
+}
+
+pub fn single_property_verifier_with_transcript<Verifier: ProofVerifier>(
+    transcript: &mut Transcript,
+    verifier: &Verifier,
+    proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
+) -> Result<()> {
     let initial_message = &proof.0;
     let final_response = &proof.1;
-    let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(&mut transcript)?;
-    let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)?;
+    initial_message.update_transcript(transcript)?;
+    let challenge_label = Verifier::ZKInitialMessage::challenge_label();
+    let challenge = transcript.scalar_challenge(challenge_label)?;
 
     verifier.verify(&challenge, initial_message, final_response)?;
 

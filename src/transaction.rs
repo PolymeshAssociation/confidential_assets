@@ -14,8 +14,8 @@ use crate::{
             CipherTextSameValueProof, CipherTextSameValueProverAwaitingChallenge,
             CipherTextSameValueVerifier,
         },
-        encryption_proofs::single_property_prover,
-        encryption_proofs::single_property_verifier,
+        encryption_proofs::single_property_prover_with_transcript,
+        encryption_proofs::single_property_verifier_with_transcript,
         range_proof::InRangeProof,
     },
     Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
@@ -24,12 +24,16 @@ use crate::{
 use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
+use merlin::Transcript;
 use scale_info::TypeInfo;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 
 pub const MAX_AUDITORS: u32 = 8;
 pub const MAX_TOTAL_SUPPLY: u64 = 1_000_000_000_000u64;
+
+/// The domain label for the Confidential Transfer proofs.
+pub const CONFIDENTIAL_TRANSFER_PROOF_LABEL: &[u8] = b"PolymeshConfidentialTransferProof";
 
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
@@ -98,6 +102,7 @@ impl ConfidentialTransferProof {
         amount: Balance,
         rng: &mut T,
     ) -> Result<Self> {
+        let mut transcript = Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL);
         // Ensure the sender has enough funds.
         ensure!(
             sender_balance >= amount,
@@ -123,7 +128,8 @@ impl ConfidentialTransferProof {
 
         // Prove that the amount encrypted under different public keys are the same.
         let gens = PedersenGens::default();
-        let amount_equal_cipher_proof = single_property_prover(
+        let amount_equal_cipher_proof = single_property_prover_with_transcript(
+            &mut transcript,
             CipherTextSameValueProverAwaitingChallenge {
                 keys,
                 w: witness.clone(),
@@ -141,7 +147,8 @@ impl ConfidentialTransferProof {
             &sender_balance.into(),
         )?;
 
-        let balance_refreshed_same_proof = single_property_prover(
+        let balance_refreshed_same_proof = single_property_prover_with_transcript(
+            &mut transcript,
             CipherTextRefreshmentProverAwaitingChallenge::new(
                 sender_account.secret.clone(),
                 *sender_init_balance,
@@ -155,6 +162,7 @@ impl ConfidentialTransferProof {
         // prove that the sender has enough funds.
         let updated_balance_blinding = balance_refresh_enc_blinding - amount_enc_blinding;
         let range_proofs = InRangeProof::prove_multiple(
+            &mut transcript,
             &[amount.into(), (sender_balance - amount).into()],
             &[amount_enc_blinding, updated_balance_blinding],
             BALANCE_RANGE,
@@ -195,6 +203,7 @@ impl ConfidentialTransferProof {
         auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
         rng: &mut R,
     ) -> Result<()> {
+        let mut transcript = Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL);
         let gens = &PedersenGens::default();
 
         // Verify that all auditors' payload is included, and
@@ -214,7 +223,8 @@ impl ConfidentialTransferProof {
             Error::WrongNumberOfAuditors
         );
         // Verify that the encrypted amounts are equal.
-        single_property_verifier(
+        single_property_verifier_with_transcript(
+            &mut transcript,
             &CipherTextSameValueVerifier {
                 keys,
                 ciphertexts: self.amounts.ciphertexts(),
@@ -224,7 +234,8 @@ impl ConfidentialTransferProof {
         )?;
 
         // verify that the balance refreshment was done correctly.
-        single_property_verifier(
+        single_property_verifier_with_transcript(
+            &mut transcript,
             &CipherTextRefreshmentVerifier::new(
                 *sender_account,
                 *sender_init_balance,
@@ -240,6 +251,7 @@ impl ConfidentialTransferProof {
         let updated_balance = self.refreshed_enc_balance - self.sender_amount();
         let updated_balance_commitment = updated_balance.y.compress();
         self.range_proofs.verify_multiple(
+            &mut transcript,
             &[amount_commitment, updated_balance_commitment],
             BALANCE_RANGE,
             rng,

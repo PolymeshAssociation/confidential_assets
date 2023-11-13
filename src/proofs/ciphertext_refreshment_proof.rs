@@ -28,11 +28,10 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use codec::{Decode, Encode};
 
 /// The domain label for the ciphertext refreshment proof.
-pub const CIPHERTEXT_REFRESHMENT_FINAL_RESPONSE_LABEL: &[u8] =
-    b"PolymeshCipherTextRefreshmentFinalResponse";
+pub const CIPHERTEXT_REFRESHMENT_PROOF_LABEL: &[u8] = b"PolymeshCipherTextRefreshmentProof";
 /// The domain label for the challenge.
 pub const CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL: &[u8] =
-    b"PolymeshCipherTextRefreshmentChallenge";
+    b"PolymeshCipherTextRefreshmentFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Proof of two ciphertext encrypting the same value under the same
@@ -59,8 +58,12 @@ impl Default for CipherTextRefreshmentInitialMessage {
 }
 
 impl UpdateTranscript for CipherTextRefreshmentInitialMessage {
+    fn challenge_label() -> &'static [u8] {
+        CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL
+    }
+
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL);
+        transcript.append_domain_separator(CIPHERTEXT_REFRESHMENT_PROOF_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
@@ -236,7 +239,7 @@ mod tests {
             &gens,
         );
         let verifier = CipherTextRefreshmentVerifier::new(elg_pub, ciphertext1, ciphertext2, &gens);
-        let mut transcript = Transcript::new(CIPHERTEXT_REFRESHMENT_FINAL_RESPONSE_LABEL);
+        let mut transcript = Transcript::new(CIPHERTEXT_REFRESHMENT_PROOF_LABEL);
 
         // Positive tests
         let mut transcript_rng = prover.create_transcript_rng(&mut rng, &transcript);

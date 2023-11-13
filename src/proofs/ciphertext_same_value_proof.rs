@@ -23,8 +23,7 @@ use codec::{Decode, Encode};
 use sp_std::prelude::*;
 
 /// The domain label for the encrypting the same value proof.
-pub const CIPHERTEXT_SAME_VALUE_PROOF_FINAL_RESPONSE_LABEL: &[u8] =
-    b"PolymeshCipherTextSameValueFinalResponse";
+pub const CIPHERTEXT_SAME_VALUE_PROOF_LABEL: &[u8] = b"PolymeshCipherTextSameValueProof";
 /// The domain label for the challenge.
 pub const CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL: &[u8] =
     b"PolymeshCipherTextSameValueFinalResponseChallenge";
@@ -57,8 +56,12 @@ impl Default for CipherTextSameValueInitialMessage {
 }
 
 impl UpdateTranscript for CipherTextSameValueInitialMessage {
+    fn challenge_label() -> &'static [u8] {
+        CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL
+    }
+
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL);
+        transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
         transcript.append_u64(b"length-A", self.a.len() as u64);
         for a in &self.a {
             transcript.append_validated_point(b"A", &a.compress())?;
@@ -241,7 +244,7 @@ mod tests {
             ciphertexts: vec![cipher1, cipher2],
             pc_gens: &gens,
         };
-        let mut transcript = Transcript::new(CIPHERTEXT_SAME_VALUE_PROOF_FINAL_RESPONSE_LABEL);
+        let mut transcript = Transcript::new(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
 
         // Positive tests
         let mut transcript_rng = prover_ac.create_transcript_rng(&mut rng, &transcript);

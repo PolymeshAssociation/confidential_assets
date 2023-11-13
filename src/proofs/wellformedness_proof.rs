@@ -22,9 +22,10 @@ use rand_core::{CryptoRng, RngCore};
 use codec::{Decode, Encode};
 
 /// The domain label for the wellformedness proof.
-pub const WELLFORMEDNESS_PROOF_FINAL_RESPONSE_LABEL: &[u8] = b"PolymeshWellformednessFinalResponse";
+pub const WELLFORMEDNESS_PROOF_LABEL: &[u8] = b"PolymeshWellformednessProof";
 /// The domain label for the challenge.
-pub const WELLFORMEDNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshWellformednessProofChallenge";
+pub const WELLFORMEDNESS_PROOF_CHALLENGE_LABEL: &[u8] =
+    b"PolymeshWellformednessFinalResponseChallenge";
 
 #[derive(PartialEq, Copy, Clone, Encode, Decode, Default, Debug)]
 pub struct WellformednessFinalResponse {
@@ -49,8 +50,12 @@ impl Default for WellformednessInitialMessage {
 }
 
 impl UpdateTranscript for WellformednessInitialMessage {
+    fn challenge_label() -> &'static [u8] {
+        WELLFORMEDNESS_PROOF_CHALLENGE_LABEL
+    }
+
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(WELLFORMEDNESS_PROOF_CHALLENGE_LABEL);
+        transcript.append_domain_separator(WELLFORMEDNESS_PROOF_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
@@ -194,7 +199,7 @@ mod tests {
             cipher,
             pc_gens: &gens,
         };
-        let mut dealer_transcript = Transcript::new(WELLFORMEDNESS_PROOF_FINAL_RESPONSE_LABEL);
+        let mut dealer_transcript = Transcript::new(WELLFORMEDNESS_PROOF_LABEL);
 
         // ------------------------------- Interactive case
         // Positive tests

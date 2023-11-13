@@ -22,9 +22,9 @@ use codec::{Decode, Encode};
 use sp_std::convert::From;
 
 /// The domain label for the correctness proof.
-pub const CORRECTNESS_PROOF_FINAL_RESPONSE_LABEL: &[u8] = b"PolymeshCorrectnessFinalResponse";
+pub const CORRECTNESS_PROOF_LABEL: &[u8] = b"PolymeshCorrectnessProof";
 /// The domain label for the challenge.
-pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessChallenge";
+pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Proof of Correct Encryption of the Given Value
@@ -56,8 +56,12 @@ impl Default for CorrectnessInitialMessage {
 }
 
 impl UpdateTranscript for CorrectnessInitialMessage {
+    fn challenge_label() -> &'static [u8] {
+        CORRECTNESS_PROOF_CHALLENGE_LABEL
+    }
+
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CORRECTNESS_PROOF_CHALLENGE_LABEL);
+        transcript.append_domain_separator(CORRECTNESS_PROOF_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
@@ -203,7 +207,7 @@ mod tests {
             cipher,
             pc_gens: &gens,
         };
-        let mut transcript = Transcript::new(CORRECTNESS_PROOF_FINAL_RESPONSE_LABEL);
+        let mut transcript = Transcript::new(CORRECTNESS_PROOF_LABEL);
 
         // Positive tests
         let mut transcript_rng = prover.create_transcript_rng(&mut rng, &transcript);

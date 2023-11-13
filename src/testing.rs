@@ -1,3 +1,4 @@
+use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
 use std::collections::BTreeMap;
 
@@ -13,10 +14,12 @@ use crate::{
         ciphertext_same_value_proof::{
             CipherTextSameValueProof, CipherTextSameValueProverAwaitingChallenge,
         },
-        encryption_proofs::single_property_prover,
+        encryption_proofs::single_property_prover_with_transcript,
         range_proof::InRangeProof,
     },
-    transaction::{Auditor, AuditorId, Auditors, ConfidentialTransferProof},
+    transaction::{
+        Auditor, AuditorId, Auditors, ConfidentialTransferProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL,
+    },
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 
@@ -33,6 +36,7 @@ pub struct TestSenderProofGen {
     pub keys: Vec<ElgamalPublicKey>,
     pub amount: Balance,
     // Temps.
+    pub transcript: Transcript,
     pub last_stage: u32,
     pub witness: CommitmentWitness,
     pub gens: PedersenGens,
@@ -74,6 +78,7 @@ impl TestSenderProofGen {
             amount,
 
             // Temps.
+            transcript: Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL),
             last_stage: 0,
             witness: CommitmentWitness::new(amount.into(), Scalar::random(rng)),
             gens: PedersenGens::default(),
@@ -130,7 +135,8 @@ impl TestSenderProofGen {
                     Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
             2 => {
-                self.amount_equal_cipher_proof = Some(single_property_prover(
+                self.amount_equal_cipher_proof = Some(single_property_prover_with_transcript(
+                    &mut self.transcript,
                     CipherTextSameValueProverAwaitingChallenge {
                         keys: self.keys.clone(),
                         w: self.witness.clone(),
@@ -150,7 +156,8 @@ impl TestSenderProofGen {
             }
             4 => {
                 let refreshed_enc_balance = self.refreshed_enc_balance.unwrap();
-                self.balance_refreshed_same_proof = Some(single_property_prover(
+                self.balance_refreshed_same_proof = Some(single_property_prover_with_transcript(
+                    &mut self.transcript,
                     CipherTextRefreshmentProverAwaitingChallenge::new(
                         self.sender_sec.clone(),
                         self.sender_init_balance,
@@ -167,6 +174,7 @@ impl TestSenderProofGen {
                 let updated_balance_blinding =
                     self.balance_refresh_enc_blinding - amount_enc_blinding;
                 self.range_proofs = Some(InRangeProof::prove_multiple(
+                    &mut self.transcript,
                     &[
                         self.amount.into(),
                         (self.sender_balance - self.amount).into(),

@@ -47,7 +47,8 @@ impl InRangeProof {
         range: u32,
         rng: &mut Rng,
     ) -> Result<Self> {
-        Self::prove_multiple(&[secret_value], &[blinding], range, rng)
+        let mut transcript = Transcript::new(RANGE_PROOF_LABEL);
+        Self::prove_multiple(&mut transcript, &[secret_value], &[blinding], range, rng)
     }
 
     /// Verify that a range proof is valid given a commitment to a secret value.
@@ -57,13 +58,15 @@ impl InRangeProof {
         range: u32,
         rng: &mut Rng,
     ) -> Result<()> {
-        self.verify_multiple(&[*commitment], range, rng)
+        let mut transcript = Transcript::new(RANGE_PROOF_LABEL);
+        self.verify_multiple(&mut transcript, &[*commitment], range, rng)
     }
 
     /// Generate a range proof for multiple secret values.
     /// Range proof commitments are equevalant to the second term (Y)
     /// of the Elgamal encryption.
     pub fn prove_multiple<Rng: RngCore + CryptoRng>(
+        transcript: &mut Transcript,
         values: &[u64],
         blindings: &[Scalar],
         range: u32,
@@ -72,14 +75,10 @@ impl InRangeProof {
         // Get generators.
         let (pc_gens, bp_gens) = Self::gens(values.len());
 
-        // Transcripts eliminate the need for a dealer by employing
-        // the Fiat-Shamir huristic.
-        let mut prover_transcript = Transcript::new(RANGE_PROOF_LABEL);
-
         let (proof, _commitments) = RangeProof::prove_multiple_with_rng(
             &bp_gens,
             &pc_gens,
-            &mut prover_transcript,
+            transcript,
             values,
             blindings,
             range as usize,
@@ -92,6 +91,7 @@ impl InRangeProof {
     /// Verify that a range proof is valid given multiple commitments to secret values.
     pub fn verify_multiple<Rng: RngCore + CryptoRng>(
         &self,
+        transcript: &mut Transcript,
         commitments: &[CompressedRistretto],
         range: u32,
         rng: &mut Rng,
@@ -99,14 +99,10 @@ impl InRangeProof {
         // Get generators.
         let (pc_gens, bp_gens) = Self::gens(commitments.len());
 
-        // Transcripts eliminate the need for a dealer by employing
-        // the Fiat-Shamir huristic.
-        let mut verifier_transcript = Transcript::new(RANGE_PROOF_LABEL);
-
         Ok(self.0.verify_multiple_with_rng(
             &bp_gens,
             &pc_gens,
-            &mut verifier_transcript,
+            transcript,
             commitments,
             range as usize,
             rng,
@@ -169,15 +165,19 @@ mod tests {
         let (witness2, cipher2) = elg_pub.encrypt_value(secret_value2.into(), &mut rng);
 
         // Positive test: secret values within range [0, 2^32)
+        let mut prover_transcript = Transcript::new(RANGE_PROOF_LABEL);
         let proof = InRangeProof::prove_multiple(
+            &mut prover_transcript,
             &[secret_value1, secret_value2],
             &[witness1.blinding(), witness2.blinding()],
             range,
             &mut rng,
         )
         .expect("This shouldn't happen.");
+        let mut verify_transcript = Transcript::new(RANGE_PROOF_LABEL);
         assert!(proof
             .verify_multiple(
+                &mut verify_transcript,
                 &[cipher1.y.compress(), cipher2.y.compress()],
                 range,
                 &mut rng
@@ -187,15 +187,19 @@ mod tests {
         // Negative test: secret value outside the allowed range
         let large_secret_value: u64 = u64::from(u32::max_value()) + 3;
         let (bad_witness, bad_cipher) = elg_pub.encrypt_value(large_secret_value.into(), &mut rng);
+        let mut prover_transcript = Transcript::new(RANGE_PROOF_LABEL);
         let bad_proof = InRangeProof::prove_multiple(
+            &mut prover_transcript,
             &[large_secret_value, secret_value2],
             &[bad_witness.blinding(), witness2.blinding()],
             range,
             &mut rng,
         )
         .expect("This shouldn't happen.");
+        let mut verify_transcript = Transcript::new(RANGE_PROOF_LABEL);
         assert!(!bad_proof
             .verify_multiple(
+                &mut verify_transcript,
                 &[bad_cipher.y.compress(), cipher2.y.compress()],
                 range,
                 &mut rng
