@@ -103,7 +103,7 @@ pub enum Error {
     /// The sender has attempted to send more that their balance.
     #[cfg_attr(
         feature = "std",
-        error("Transaction amount {transaction_amount} must be less than or equal to {balance}")
+        error("Transaction amount {transaction_amount} is larger then current balance {balance}")
     )]
     NotEnoughFund {
         balance: Balance,
