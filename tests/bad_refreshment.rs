@@ -61,6 +61,7 @@ pub fn bad_refreshment1() {
         single_property_prover(
             CipherTextRefreshmentProverAwaitingChallenge::new(
                 proof_gen.sender_sec.clone(),
+                proof_gen.sender_pub.clone(),
                 proof_gen.sender_init_balance,
                 refreshed_enc_balance,
                 &proof_gen.gens,
@@ -141,6 +142,7 @@ pub fn bad_refreshment2() {
         single_property_prover(
             CipherTextRefreshmentProverAwaitingChallenge::new(
                 proof_gen.sender_sec.clone(),
+                proof_gen.sender_pub.clone(),
                 proof_gen.sender_init_balance,
                 refreshed_enc_balance,
                 &proof_gen.gens,

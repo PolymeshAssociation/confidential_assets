@@ -119,6 +119,6 @@ pub fn bad_public_key() {
     eprintln!("verify sender proof: {res:?}");
     assert_eq!(
         res,
-        Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 1 })
+        Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 0 })
     );
 }

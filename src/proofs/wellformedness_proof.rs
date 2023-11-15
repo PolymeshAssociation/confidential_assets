@@ -50,16 +50,21 @@ impl Default for WellformednessInitialMessage {
 }
 
 impl UpdateTranscript for WellformednessInitialMessage {
-    fn challenge_label() -> &'static [u8] {
-        WELLFORMEDNESS_PROOF_CHALLENGE_LABEL
-    }
-
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(WELLFORMEDNESS_PROOF_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
     }
+
+    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
+        transcript.scalar_challenge(WELLFORMEDNESS_PROOF_CHALLENGE_LABEL)
+    }
+}
+
+fn start_transcript(transcript: &mut Transcript, pub_key: &ElgamalPublicKey) -> Result<()> {
+    transcript.append_domain_separator(WELLFORMEDNESS_PROOF_LABEL);
+    transcript.append_validated_point(b"PK", &pub_key.pub_key.compress())?;
+    Ok(())
 }
 
 /// Holds the non-interactive proofs of wellformedness, equivalent of L_enc of the MERCAT paper.
@@ -91,6 +96,10 @@ impl<'a> ProofProverAwaitingChallenge for WellformednessProverAwaitingChallenge<
     type ZKInitialMessage = WellformednessInitialMessage;
     type ZKFinalResponse = WellformednessFinalResponse;
     type ZKProver = WellformednessProver;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn create_transcript_rng<T: RngCore + CryptoRng>(
         &self,
@@ -139,6 +148,10 @@ pub struct WellformednessVerifier<'a> {
 impl<'a> ProofVerifier for WellformednessVerifier<'a> {
     type ZKInitialMessage = WellformednessInitialMessage;
     type ZKFinalResponse = WellformednessFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn verify(
         &self,

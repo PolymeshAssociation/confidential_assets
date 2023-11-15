@@ -7,7 +7,9 @@
 use crate::{
     elgamal::CommitmentWitness,
     errors::{Error, Result},
-    proofs::encryption_proofs::{ZKPChallenge, ENCRYPTION_PROOFS_CHALLENGE_LABEL},
+    proofs::encryption_proofs::{
+        ZKPChallenge, ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL,
+    },
 };
 
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
@@ -102,12 +104,17 @@ impl TranscriptProtocol for Transcript {
 /// A trait that is used to update the transcript with the initial message
 /// that results from the first round of the protocol.
 pub trait UpdateTranscript {
-    fn challenge_label() -> &'static [u8] {
-        ENCRYPTION_PROOFS_CHALLENGE_LABEL
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        Ok(())
     }
 
-    fn update_transcript(&self, d: &mut Transcript) -> Result<()>;
+    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
+        transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+    }
 }
+
+impl UpdateTranscript for () {}
 
 #[cfg(test)]
 mod tests {

@@ -160,6 +160,7 @@ impl TestSenderProofGen {
                     &mut self.transcript,
                     CipherTextRefreshmentProverAwaitingChallenge::new(
                         self.sender_sec.clone(),
+                        self.sender_pub.clone(),
                         self.sender_init_balance,
                         refreshed_enc_balance,
                         &self.gens,
@@ -174,6 +175,7 @@ impl TestSenderProofGen {
                 let updated_balance_blinding =
                     self.balance_refresh_enc_blinding - amount_enc_blinding;
                 self.range_proofs = Some(InRangeProof::prove_multiple(
+                    &self.gens,
                     &mut self.transcript,
                     &[
                         self.amount.into(),

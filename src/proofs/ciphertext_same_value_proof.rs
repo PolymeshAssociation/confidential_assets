@@ -56,12 +56,7 @@ impl Default for CipherTextSameValueInitialMessage {
 }
 
 impl UpdateTranscript for CipherTextSameValueInitialMessage {
-    fn challenge_label() -> &'static [u8] {
-        CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL
-    }
-
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
         transcript.append_u64(b"length-A", self.a.len() as u64);
         for a in &self.a {
             transcript.append_validated_point(b"A", &a.compress())?;
@@ -69,6 +64,18 @@ impl UpdateTranscript for CipherTextSameValueInitialMessage {
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
     }
+
+    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
+        transcript.scalar_challenge(CIPHERTEXT_SAME_VALUE_PROOF_CHALLENGE_LABEL)
+    }
+}
+
+fn start_transcript(transcript: &mut Transcript, keys: &[ElgamalPublicKey]) -> Result<()> {
+    transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
+    for key in keys {
+        transcript.append_validated_point(b"PK", &key.pub_key.compress())?;
+    }
+    Ok(())
 }
 
 /// Holds the non-interactive proofs of equality using different public keys.
@@ -102,6 +109,10 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
     type ZKInitialMessage = CipherTextSameValueInitialMessage;
     type ZKFinalResponse = CipherTextSameValueFinalResponse;
     type ZKProver = CipherTextSameValueProver;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.keys)
+    }
 
     fn create_transcript_rng<T: RngCore + CryptoRng>(
         &self,
@@ -162,6 +173,10 @@ pub struct CipherTextSameValueVerifier<'a> {
 impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
     type ZKInitialMessage = CipherTextSameValueInitialMessage;
     type ZKFinalResponse = CipherTextSameValueFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.keys)
+    }
 
     fn verify(
         &self,

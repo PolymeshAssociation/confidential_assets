@@ -49,6 +49,11 @@ pub trait ProofProverAwaitingChallenge {
     type ZKFinalResponse;
     type ZKProver: ProofProver<Self::ZKFinalResponse>;
 
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        Ok(())
+    }
+
     /// Create an RNG from current transcript's state and an RNG.
     /// This new RNG will be used by the prover to generate randomness
     /// in the first round of the Sigma protocol.
@@ -73,7 +78,6 @@ pub trait ProofProverAwaitingChallenge {
     /// First round of the Sigma protocol. Prover generates an initial message.
     ///
     /// # Inputs
-    /// `pc_gens` The Pedersen Generators used for the Elgamal encryption.
     /// `rng`     An RNG created by calling `create_transcript_rng()`.
     ///
     /// # Output
@@ -99,6 +103,11 @@ pub trait ProofProver<ZKFinalResponse> {
 pub trait ProofVerifier {
     type ZKInitialMessage: UpdateTranscript;
     type ZKFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        Ok(())
+    }
 
     /// Forth round of the Sigma protocol. Verifier receives the initial message
     /// and the final response, and verifies them.
@@ -165,13 +174,15 @@ pub fn single_property_prover_with_transcript<
         ProverAwaitingChallenge::ZKFinalResponse,
     >,
 > {
+    // Start the transcript.
+    prover_ac.start_transcript(transcript)?;
+
     let mut transcript_rng = prover_ac.create_transcript_rng(rng, &transcript);
     let (prover, initial_message) = prover_ac.generate_initial_message(&mut transcript_rng);
 
     // Update the transcript with Prover's initial message
     initial_message.update_transcript(transcript)?;
-    let challenge_label = ProverAwaitingChallenge::ZKInitialMessage::challenge_label();
-    let challenge = transcript.scalar_challenge(challenge_label)?;
+    let challenge = initial_message.scalar_challenge(transcript)?;
 
     let final_response = prover.apply_challenge(&challenge);
 
@@ -200,13 +211,15 @@ pub fn single_property_verifier_with_transcript<Verifier: ProofVerifier>(
     verifier: &Verifier,
     proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
 ) -> Result<()> {
+    // Start the transcript.
+    verifier.start_transcript(transcript)?;
+
     let initial_message = &proof.0;
     let final_response = &proof.1;
 
     // Update the transcript with Prover's initial message
     initial_message.update_transcript(transcript)?;
-    let challenge_label = Verifier::ZKInitialMessage::challenge_label();
-    let challenge = transcript.scalar_challenge(challenge_label)?;
+    let challenge = initial_message.scalar_challenge(transcript)?;
 
     verifier.verify(&challenge, initial_message, final_response)?;
 
@@ -355,20 +368,19 @@ mod tests {
         initial_message1.update_transcript(&mut transcript).unwrap();
 
         // Dealer calculates the challenge from the 2 initial messages
-        let challenge = transcript
-            .scalar_challenge(b"batch_proof_challenge_label")
-            .unwrap();
+        let challenge0 = initial_message0.scalar_challenge(&mut transcript).unwrap();
+        let challenge1 = initial_message1.scalar_challenge(&mut transcript).unwrap();
 
         // Provers generate the final responses
-        let final_response0 = prover0.apply_challenge(&challenge);
-        let final_response1 = prover1.apply_challenge(&challenge);
+        let final_response0 = prover0.apply_challenge(&challenge0);
+        let final_response1 = prover1.apply_challenge(&challenge1);
 
         // Positive tests
         // Verifiers verify the proofs
-        let result = verifier0.verify(&challenge, &initial_message0, &final_response0);
+        let result = verifier0.verify(&challenge0, &initial_message0, &final_response0);
         assert!(result.is_ok());
 
-        let result = verifier1.verify(&challenge, &initial_message1, &final_response1);
+        let result = verifier1.verify(&challenge1, &initial_message1, &final_response1);
         assert!(result.is_ok());
 
         // Negative tests

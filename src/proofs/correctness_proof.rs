@@ -56,16 +56,21 @@ impl Default for CorrectnessInitialMessage {
 }
 
 impl UpdateTranscript for CorrectnessInitialMessage {
-    fn challenge_label() -> &'static [u8] {
-        CORRECTNESS_PROOF_CHALLENGE_LABEL
-    }
-
     fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CORRECTNESS_PROOF_LABEL);
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
         Ok(())
     }
+
+    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
+        transcript.scalar_challenge(CORRECTNESS_PROOF_CHALLENGE_LABEL)
+    }
+}
+
+fn start_transcript(transcript: &mut Transcript, pub_key: &ElgamalPublicKey) -> Result<()> {
+    transcript.append_domain_separator(CORRECTNESS_PROOF_LABEL);
+    transcript.append_validated_point(b"PK", &pub_key.pub_key.compress())?;
+    Ok(())
 }
 
 /// Holds the non-interactive proofs of correctness, equivalent of L_correct of MERCAT paper.
@@ -95,6 +100,10 @@ impl<'a> ProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a>
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
     type ZKProver = CorrectnessProver;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn create_transcript_rng<T: RngCore + CryptoRng>(
         &self,
@@ -146,6 +155,10 @@ pub struct CorrectnessVerifier<'a> {
 impl<'a> ProofVerifier for CorrectnessVerifier<'a> {
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn verify(
         &self,

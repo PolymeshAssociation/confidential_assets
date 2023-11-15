@@ -151,6 +151,7 @@ impl ConfidentialTransferProof {
             &mut transcript,
             CipherTextRefreshmentProverAwaitingChallenge::new(
                 sender_account.secret.clone(),
+                sender_account.public.clone(),
                 *sender_init_balance,
                 refreshed_enc_balance,
                 &gens,
@@ -162,6 +163,7 @@ impl ConfidentialTransferProof {
         // prove that the sender has enough funds.
         let updated_balance_blinding = balance_refresh_enc_blinding - amount_enc_blinding;
         let range_proofs = InRangeProof::prove_multiple(
+            &gens,
             &mut transcript,
             &[amount.into(), (sender_balance - amount).into()],
             &[amount_enc_blinding, updated_balance_blinding],
@@ -251,6 +253,7 @@ impl ConfidentialTransferProof {
         let updated_balance = self.refreshed_enc_balance - self.sender_amount();
         let updated_balance_commitment = updated_balance.y.compress();
         self.range_proofs.verify_multiple(
+            &gens,
             &mut transcript,
             &[amount_commitment, updated_balance_commitment],
             BALANCE_RANGE,
