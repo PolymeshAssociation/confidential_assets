@@ -1,6 +1,7 @@
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
-use std::collections::BTreeMap;
+use sp_std::collections::btree_map::BTreeMap;
+use sp_std::prelude::*;
 
 use crate::{
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
