@@ -123,18 +123,19 @@ impl ConfidentialTransferProof {
 
         // CommitmentWitness for transaction amount.
         let witness = CommitmentWitness::new(amount.into(), Scalar::random(rng));
-        let amounts = CipherTextMultiKeyBuilder::new(&witness, keys.iter());
+        let amounts = CipherTextMultiKeyBuilder::new(&witness, keys.iter()).build();
         let amount_enc_blinding = witness.blinding();
 
         // Prove that the amount encrypted under different public keys are the same.
         let gens = PedersenGens::default();
         let amount_equal_cipher_proof = single_property_prover_with_transcript(
             &mut transcript,
-            CipherTextSameValueProverAwaitingChallenge {
+            CipherTextSameValueProverAwaitingChallenge::new(
                 keys,
-                w: witness.clone(),
-                pc_gens: &gens,
-            },
+                amounts.ciphertexts(),
+                witness.clone(),
+                &gens,
+            ),
             rng,
         )?;
 
@@ -187,7 +188,7 @@ impl ConfidentialTransferProof {
             .collect();
 
         Ok(Self {
-            amounts: amounts.build(),
+            amounts,
             amount_equal_cipher_proof,
             range_proofs,
             balance_refreshed_same_proof,
@@ -227,11 +228,7 @@ impl ConfidentialTransferProof {
         // Verify that the encrypted amounts are equal.
         single_property_verifier_with_transcript(
             &mut transcript,
-            &CipherTextSameValueVerifier {
-                keys,
-                ciphertexts: self.amounts.ciphertexts(),
-                pc_gens: &gens,
-            },
+            &CipherTextSameValueVerifier::new(keys, self.amounts.ciphertexts(), &gens),
             &self.amount_equal_cipher_proof,
         )?;
 

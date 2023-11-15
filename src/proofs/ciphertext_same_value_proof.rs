@@ -70,12 +70,34 @@ impl UpdateTranscript for CipherTextSameValueInitialMessage {
     }
 }
 
-fn start_transcript(transcript: &mut Transcript, keys: &[ElgamalPublicKey]) -> Result<()> {
-    transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
-    for key in keys {
-        transcript.append_validated_point(b"PK", &key.pub_key.compress())?;
+pub struct CipherTextSameValueInputs {
+    /// The public keys to which the `value` is encrypted.
+    pub keys: Vec<ElgamalPublicKey>,
+
+    /// The encryption cipher texts.
+    pub ciphertexts: Vec<CipherText>,
+}
+
+impl CipherTextSameValueInputs {
+    pub fn new(keys: Vec<ElgamalPublicKey>, ciphertexts: Vec<CipherText>) -> Self {
+        Self { keys, ciphertexts }
     }
-    Ok(())
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
+        for key in &self.keys {
+            transcript.append_validated_point(b"PK", &key.pub_key.compress())?;
+        }
+        let first = self
+            .ciphertexts
+            .first()
+            .ok_or_else(|| Error::VerificationError)?;
+        transcript.append_validated_point(b"Y", &first.y.compress())?;
+        for ciphertext in &self.ciphertexts {
+            transcript.append_validated_point(b"X", &ciphertext.x.compress())?;
+        }
+        Ok(())
+    }
 }
 
 /// Holds the non-interactive proofs of equality using different public keys.
@@ -83,14 +105,28 @@ pub type CipherTextSameValueProof =
     ZKProofResponse<CipherTextSameValueInitialMessage, CipherTextSameValueFinalResponse>;
 
 pub struct CipherTextSameValueProverAwaitingChallenge<'a> {
-    /// The public keys used for the elgamal encryption.
-    pub keys: Vec<ElgamalPublicKey>,
+    pub inputs: CipherTextSameValueInputs,
 
     /// The secret commitment witness.
     pub w: CommitmentWitness,
 
     /// The Pedersen generators.
     pub pc_gens: &'a PedersenGens,
+}
+
+impl<'a> CipherTextSameValueProverAwaitingChallenge<'a> {
+    pub fn new(
+        keys: Vec<ElgamalPublicKey>,
+        ciphertexts: Vec<CipherText>,
+        w: CommitmentWitness,
+        pc_gens: &'a PedersenGens,
+    ) -> Self {
+        Self {
+            inputs: CipherTextSameValueInputs::new(keys, ciphertexts),
+            w,
+            pc_gens,
+        }
+    }
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]
@@ -111,7 +147,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
     type ZKProver = CipherTextSameValueProver;
 
     fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        start_transcript(transcript, &self.keys)
+        self.inputs.start_transcript(transcript)
     }
 
     fn create_transcript_rng<T: RngCore + CryptoRng>(
@@ -130,6 +166,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextSameValueProverAwaitingChall
         let rand_commitment2 = Scalar::random(rng);
 
         let a = self
+            .inputs
             .keys
             .iter()
             .map(|key| (rand_commitment1 * *key.pub_key).into())
@@ -160,14 +197,23 @@ impl ProofProver<CipherTextSameValueFinalResponse> for CipherTextSameValueProver
 }
 
 pub struct CipherTextSameValueVerifier<'a> {
-    /// The public keys to which the `value` is encrypted.
-    pub keys: Vec<ElgamalPublicKey>,
-
-    /// The encryption cipher texts.
-    pub ciphertexts: Vec<CipherText>,
+    pub inputs: CipherTextSameValueInputs,
 
     /// The ciphertext generators.
     pub pc_gens: &'a PedersenGens,
+}
+
+impl<'a> CipherTextSameValueVerifier<'a> {
+    pub fn new(
+        keys: Vec<ElgamalPublicKey>,
+        ciphertexts: Vec<CipherText>,
+        pc_gens: &'a PedersenGens,
+    ) -> Self {
+        Self {
+            inputs: CipherTextSameValueInputs::new(keys, ciphertexts),
+            pc_gens,
+        }
+    }
 }
 
 impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
@@ -175,7 +221,7 @@ impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
     type ZKFinalResponse = CipherTextSameValueFinalResponse;
 
     fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        start_transcript(transcript, &self.keys)
+        self.inputs.start_transcript(transcript)
     }
 
     fn verify(
@@ -184,16 +230,19 @@ impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
         initial_message: &Self::ZKInitialMessage,
         final_response: &Self::ZKFinalResponse,
     ) -> Result<()> {
-        let len = self.keys.len();
+        let len = self.inputs.keys.len();
         // Ensure there are at least 2 keys (the proof is useless for 0-1 keys).
         ensure!(len >= 2, Error::VerificationError);
         // Ensure the number of keys equals the number of ciphertexts.
-        ensure!(len == self.ciphertexts.len(), Error::VerificationError);
+        ensure!(
+            len == self.inputs.ciphertexts.len(),
+            Error::VerificationError
+        );
         // Ensure the number of keys equals the lenght of `a` from the initial message.
         ensure!(len == initial_message.a.len(), Error::VerificationError);
 
         // Get the `y` value from the first ciphertext.
-        let first_y = *self.ciphertexts[0].y;
+        let first_y = *self.inputs.ciphertexts[0].y;
 
         let z1 = *final_response.z1;
         let z2 = *final_response.z2;
@@ -204,9 +253,10 @@ impl<'a> ProofVerifier for CipherTextSameValueVerifier<'a> {
         );
 
         for ((key, cipher), a) in self
+            .inputs
             .keys
             .iter()
-            .zip(self.ciphertexts.iter())
+            .zip(self.inputs.ciphertexts.iter())
             .zip(initial_message.a.iter())
         {
             let a = a.decompress();
@@ -249,16 +299,17 @@ mod tests {
         let elg_pub2 = ElgamalSecretKey::new(Scalar::random(&mut rng)).get_public_key();
         let cipher2 = elg_pub2.encrypt(&w);
 
-        let prover_ac = CipherTextSameValueProverAwaitingChallenge {
-            keys: vec![elg_pub1, elg_pub2],
+        let prover_ac = CipherTextSameValueProverAwaitingChallenge::new(
+            vec![elg_pub1, elg_pub2],
+            vec![cipher1, cipher2],
             w,
-            pc_gens: &gens,
-        };
-        let verifier = CipherTextSameValueVerifier {
-            keys: vec![elg_pub1, elg_pub2],
-            ciphertexts: vec![cipher1, cipher2],
-            pc_gens: &gens,
-        };
+            &gens,
+        );
+        let verifier = CipherTextSameValueVerifier::new(
+            vec![elg_pub1, elg_pub2],
+            vec![cipher1, cipher2],
+            &gens,
+        );
         let mut transcript = Transcript::new(CIPHERTEXT_SAME_VALUE_PROOF_LABEL);
 
         // Positive tests
@@ -295,18 +346,20 @@ mod tests {
     fn serialize_deserialize_proof() {
         let mut rng = StdRng::from_seed(SEED_1);
         let secret_value = 49u32;
-        let rand_blind = Scalar::random(&mut rng);
         let gens = PedersenGens::default();
-        let w = CommitmentWitness::new(secret_value.into(), rand_blind);
 
         let elg_pub1 = ElgamalSecretKey::new(Scalar::random(&mut rng)).get_public_key();
-        let elg_pub2 = ElgamalSecretKey::new(Scalar::random(&mut rng)).get_public_key();
+        let (w, cipher1) = elg_pub1.encrypt_value(secret_value.into(), &mut rng);
 
-        let prover = CipherTextSameValueProverAwaitingChallenge {
-            keys: vec![elg_pub1, elg_pub2],
+        let elg_pub2 = ElgamalSecretKey::new(Scalar::random(&mut rng)).get_public_key();
+        let cipher2 = elg_pub2.encrypt(&w);
+
+        let prover = CipherTextSameValueProverAwaitingChallenge::new(
+            vec![elg_pub1, elg_pub2],
+            vec![cipher1, cipher2],
             w,
-            pc_gens: &gens,
-        };
+            &gens,
+        );
 
         let (initial_message, final_response) = encryption_proofs::single_property_prover::<
             StdRng,

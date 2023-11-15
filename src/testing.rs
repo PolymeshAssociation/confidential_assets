@@ -135,13 +135,15 @@ impl TestSenderProofGen {
                     Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
             2 => {
+                let ciphertexts = self.amounts.as_ref().map(|a| a.ciphertexts()).unwrap();
                 self.amount_equal_cipher_proof = Some(single_property_prover_with_transcript(
                     &mut self.transcript,
-                    CipherTextSameValueProverAwaitingChallenge {
-                        keys: self.keys.clone(),
-                        w: self.witness.clone(),
-                        pc_gens: &self.gens,
-                    },
+                    CipherTextSameValueProverAwaitingChallenge::new(
+                        self.keys.clone(),
+                        ciphertexts,
+                        self.witness.clone(),
+                        &self.gens,
+                    ),
                     rng,
                 )?);
             }
