@@ -6,11 +6,7 @@ use merlin::Transcript;
 use confidential_assets::{
     elgamal::CommitmentWitness,
     errors::Error,
-    proofs::{
-        ciphertext_refreshment_proof::*,
-        encryption_proofs::*,
-        transcript::{TranscriptProtocol, UpdateTranscript},
-    },
+    proofs::{ciphertext_refreshment_proof::*, encryption_proofs::*, transcript::UpdateTranscript},
     testing::{self, TestSenderProofGen},
     transaction::MAX_AUDITORS,
     ElgamalKeys, ElgamalPublicKey, Scalar,
@@ -45,9 +41,8 @@ pub fn bad_public_key() {
         a: a.into(),
         b: b.into(),
     };
-    initial_message.update_transcript(&mut transcript).unwrap();
-    let c = transcript
-        .scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+    let c = initial_message
+        .update_transcript(&mut transcript)
         .unwrap()
         .x()
         .clone();

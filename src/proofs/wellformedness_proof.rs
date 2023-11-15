@@ -50,13 +50,9 @@ impl Default for WellformednessInitialMessage {
 }
 
 impl UpdateTranscript for WellformednessInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
-        Ok(())
-    }
-
-    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.scalar_challenge(WELLFORMEDNESS_PROOF_CHALLENGE_LABEL)
     }
 }
@@ -221,11 +217,8 @@ mod tests {
         let (prover, initial_message) = prover.generate_initial_message(&mut transcript_rng);
 
         // 2nd round
-        initial_message
+        let challenge = initial_message
             .update_transcript(&mut dealer_transcript)
-            .unwrap();
-        let challenge = dealer_transcript
-            .scalar_challenge(WELLFORMEDNESS_PROOF_CHALLENGE_LABEL)
             .unwrap();
 
         // 3rd round

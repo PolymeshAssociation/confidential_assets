@@ -171,28 +171,25 @@
 //! // Provers generate the initial messages
 //! let (prover_0, initial_message0) =
 //!     prover_0.generate_initial_message(&mut transcript_rng0);
-//! initial_message0.update_transcript(&mut transcript).unwrap();
 //!
 //! let (prover_1, initial_message1) =
 //!     prover_1.generate_initial_message(&mut transcript_rng1);
-//! initial_message1.update_transcript(&mut transcript).unwrap();
 //!
 //! // Dealer calculates the challenge from the 2 initial messages
-//! let challenge = transcript
-//!     .scalar_challenge(b"batch_proof_challenge_label")
-//!     .unwrap();
+//! let challenge0 = initial_message0.update_transcript(&mut transcript).unwrap();
+//! let challenge1 = initial_message1.update_transcript(&mut transcript).unwrap();
 //!
 //! // Provers generate the final responses
-//! let final_response0 = prover_0.apply_challenge(&challenge);
-//! let final_response1 = prover_1.apply_challenge(&challenge);
+//! let final_response0 = prover_0.apply_challenge(&challenge0);
+//! let final_response1 = prover_1.apply_challenge(&challenge1);
 //!
 //! // Verifiers verify the proofs
 //! let result =
-//!     verifier_0.verify(&challenge, &initial_message0, &final_response0);
+//!     verifier_0.verify(&challenge0, &initial_message0, &final_response0);
 //! assert!(result.is_ok());
 //!
 //! let result =
-//!     verifier_1.verify(&challenge, &initial_message1, &final_response1);
+//!     verifier_1.verify(&challenge1, &initial_message1, &final_response1);
 //! assert!(result.is_ok());
 //!
 //! ```

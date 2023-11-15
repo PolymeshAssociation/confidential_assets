@@ -56,13 +56,9 @@ impl Default for CorrectnessInitialMessage {
 }
 
 impl UpdateTranscript for CorrectnessInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
-        Ok(())
-    }
-
-    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.scalar_challenge(CORRECTNESS_PROOF_CHALLENGE_LABEL)
     }
 }
@@ -225,10 +221,7 @@ mod tests {
         // Positive tests
         let mut transcript_rng = prover.create_transcript_rng(&mut rng, &transcript);
         let (prover, initial_message) = prover.generate_initial_message(&mut transcript_rng);
-        initial_message.update_transcript(&mut transcript).unwrap();
-        let challenge = transcript
-            .scalar_challenge(CORRECTNESS_PROOF_CHALLENGE_LABEL)
-            .unwrap();
+        let challenge = initial_message.update_transcript(&mut transcript).unwrap();
         let final_response = prover.apply_challenge(&challenge);
 
         let result = verifier.verify(&challenge, &initial_message, &final_response);

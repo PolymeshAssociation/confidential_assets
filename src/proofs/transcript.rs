@@ -104,12 +104,8 @@ impl TranscriptProtocol for Transcript {
 /// A trait that is used to update the transcript with the initial message
 /// that results from the first round of the protocol.
 pub trait UpdateTranscript {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
-        Ok(())
-    }
-
-    fn scalar_challenge(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
     }
 }

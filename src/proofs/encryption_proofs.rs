@@ -181,8 +181,7 @@ pub fn single_property_prover_with_transcript<
     let (prover, initial_message) = prover_ac.generate_initial_message(&mut transcript_rng);
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(transcript)?;
-    let challenge = initial_message.scalar_challenge(transcript)?;
+    let challenge = initial_message.update_transcript(transcript)?;
 
     let final_response = prover.apply_challenge(&challenge);
 
@@ -218,8 +217,7 @@ pub fn single_property_verifier_with_transcript<Verifier: ProofVerifier>(
     let final_response = &proof.1;
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(transcript)?;
-    let challenge = initial_message.scalar_challenge(transcript)?;
+    let challenge = initial_message.update_transcript(transcript)?;
 
     verifier.verify(&challenge, initial_message, final_response)?;
 
@@ -362,14 +360,11 @@ mod tests {
 
         // Provers generate the initial messages
         let (prover0, initial_message0) = prover0.generate_initial_message(&mut transcript_rng1);
-        initial_message0.update_transcript(&mut transcript).unwrap();
-
         let (prover1, initial_message1) = prover1.generate_initial_message(&mut transcript_rng2);
-        initial_message1.update_transcript(&mut transcript).unwrap();
 
         // Dealer calculates the challenge from the 2 initial messages
-        let challenge0 = initial_message0.scalar_challenge(&mut transcript).unwrap();
-        let challenge1 = initial_message1.scalar_challenge(&mut transcript).unwrap();
+        let challenge0 = initial_message0.update_transcript(&mut transcript).unwrap();
+        let challenge1 = initial_message1.update_transcript(&mut transcript).unwrap();
 
         // Provers generate the final responses
         let final_response0 = prover0.apply_challenge(&challenge0);
