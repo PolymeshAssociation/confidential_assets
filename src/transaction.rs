@@ -315,6 +315,10 @@ impl ConfidentialTransferProof {
     pub fn receiver_amount(&self) -> CipherText {
         self.amount(1)
     }
+
+    pub fn auditor_count(&self) -> usize {
+        self.amounts.len() - 2
+    }
 }
 
 // ------------------------------------------------------------------------
