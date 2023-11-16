@@ -12,16 +12,13 @@ use confidential_assets::{
     ElgamalKeys, ElgamalPublicKey, Scalar,
 };
 use rand::thread_rng;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[test]
 pub fn bad_public_key() {
     let mut rng = thread_rng();
     let auditors = testing::generate_auditors(MAX_AUDITORS as usize, &mut rng);
-    let auditor_keys: BTreeMap<_, _> = auditors
-        .iter()
-        .map(|(id, keys)| (*id, keys.public))
-        .collect();
+    let auditor_keys: BTreeSet<_> = auditors.iter().map(|keys| keys.public).collect();
     // Create sender account with a balance.
     let (sender_account, sender_init_balance) =
         testing::create_account_with_amount(&mut rng, 1_000);

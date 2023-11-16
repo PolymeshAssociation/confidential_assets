@@ -1,7 +1,7 @@
 use crate::{
     elgamal::{
         multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-        CipherText, CipherTextHint, CommitmentWitness, ElgamalPublicKey,
+        CipherText, CommitmentWitness, ElgamalPublicKey,
     },
     errors::{Error, Result},
     proofs::{
@@ -25,8 +25,7 @@ use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
 use merlin::Transcript;
-use scale_info::TypeInfo;
-use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::prelude::*;
 
 pub const MAX_AUDITORS: u32 = 8;
@@ -38,17 +37,6 @@ pub const CONFIDENTIAL_TRANSFER_PROOF_LABEL: &[u8] = b"PolymeshConfidentialTrans
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
-
-#[derive(Copy, Clone, Debug, Encode, Decode, TypeInfo, PartialEq, Eq, PartialOrd, Ord)]
-pub struct AuditorId(#[codec(compact)] pub u32);
-
-#[derive(Clone, Encode, Decode, Debug, PartialEq)]
-pub struct Auditor {
-    pub encrypted_hint: CipherTextHint,
-    pub amount_idx: u8,
-}
-
-pub type Auditors = BTreeMap<AuditorId, Auditor>;
 
 /// Holds the proofs and memo of the confidential transaction sent by the sender.
 #[derive(Clone, Encode, Decode, Debug)]
@@ -67,15 +55,13 @@ pub struct ConfidentialTransferProof {
     pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
     /// Bulletproof range proofs for "Non negative amount" and "Enough funds".
     pub range_proofs: InRangeProof,
-    /// Auditor id lookup and hints.
-    pub auditors: Auditors,
 }
 
 impl ConfidentialTransferProof {
     pub fn keys(
         sender_key: &ElgamalPublicKey,
         receiver_key: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
     ) -> Result<Vec<ElgamalPublicKey>> {
         ensure!(
             auditors_enc_pub_keys.len() <= MAX_AUDITORS as usize,
@@ -86,7 +72,7 @@ impl ConfidentialTransferProof {
         keys.push(*sender_key);
         keys.push(*receiver_key);
         for auditor in auditors_enc_pub_keys {
-            keys.push(*auditor.1);
+            keys.push(*auditor);
         }
 
         Ok(keys)
@@ -98,7 +84,7 @@ impl ConfidentialTransferProof {
         sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_key: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
     ) -> Result<Self> {
@@ -172,28 +158,12 @@ impl ConfidentialTransferProof {
             rng,
         )?;
 
-        // Add the necessary payload for auditors.
-        let auditors = auditors_enc_pub_keys
-            .iter()
-            .enumerate()
-            .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
-                (
-                    *auditor_id,
-                    Auditor {
-                        amount_idx: (idx + 2) as u8,
-                        encrypted_hint: CipherTextHint::new(&witness, rng),
-                    },
-                )
-            })
-            .collect();
-
         Ok(Self {
             amounts,
             amount_equal_cipher_proof,
             range_proofs,
             balance_refreshed_same_proof,
             refreshed_enc_balance,
-            auditors,
         })
     }
 
@@ -203,7 +173,7 @@ impl ConfidentialTransferProof {
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &CipherText,
         receiver_account: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
         rng: &mut R,
     ) -> Result<()> {
         let mut transcript = Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL);
@@ -211,7 +181,7 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
-        let a_len = self.auditors.len();
+        let a_len = self.amounts.len() - 2;
         ensure!(a_len <= MAX_AUDITORS as usize, Error::TooManyAuditors);
         ensure!(
             a_len == auditors_enc_pub_keys.len(),
@@ -290,32 +260,48 @@ impl ConfidentialTransferProof {
     /// Audit the sender's encrypted amount.
     pub fn auditor_verify(
         &self,
-        auditor_id: AuditorId,
+        auditor_idx: u8,
         auditor_enc_key: &ElgamalKeys,
         expected_amount: Option<Balance>,
     ) -> Result<Balance> {
-        match self.auditors.get(&auditor_id) {
-            Some(auditor) => {
-                let enc_amount = self.amount(auditor.amount_idx.into());
-                let amount = match expected_amount {
-                    Some(expected_amount) => {
-                        // Check that the amount is correct.
-                        auditor_enc_key
-                            .verify(&enc_amount, &expected_amount.into())
-                            .map_err(|_| Error::TransactionAmountMismatch { expected_amount })?;
-                        expected_amount
-                    }
-                    None => {
-                        // Add encrypted hint to `CipherText` for const-time decrypt.
-                        let enc_amount_with_hint =
-                            auditor.encrypted_hint.ciphertext_with_hint(enc_amount);
-                        auditor_enc_key.const_time_decrypt(&enc_amount_with_hint)?
-                    }
-                };
-                Ok(amount)
-            }
-            None => Err(Error::AuditorVerifyError),
+        self.auditor_verify_with_limit(
+            auditor_idx,
+            auditor_enc_key,
+            expected_amount,
+            Balance::max_value(),
+        )
+    }
+
+    /// Verify the initialized transaction.
+    /// Audit the sender's encrypted amount.
+    pub fn auditor_verify_with_limit(
+        &self,
+        auditor_idx: u8,
+        auditor_enc_key: &ElgamalKeys,
+        expected_amount: Option<Balance>,
+        limit: Balance,
+    ) -> Result<Balance> {
+        let amount_idx = (auditor_idx + 2) as usize;
+        if amount_idx >= self.amounts.len() {
+            return Err(Error::AuditorVerifyError);
         }
+        let enc_amount = self.amount(amount_idx.into());
+        let amount = match expected_amount {
+            Some(expected_amount) => {
+                // Check that the amount is correct.
+                auditor_enc_key
+                    .verify(&enc_amount, &expected_amount.into())
+                    .map_err(|_| Error::TransactionAmountMismatch { expected_amount })?;
+                expected_amount
+            }
+            None => {
+                // Decrypt the amount.
+                auditor_enc_key
+                    .decrypt_with_hint(&enc_amount, 0, limit)
+                    .ok_or_else(|| Error::AuditorVerifyError)?
+            }
+        };
+        Ok(amount)
     }
 
     pub fn amount(&self, idx: usize) -> CipherText {
@@ -328,10 +314,6 @@ impl ConfidentialTransferProof {
 
     pub fn receiver_amount(&self) -> CipherText {
         self.amount(1)
-    }
-
-    pub fn auditor_count(&self) -> usize {
-        self.auditors.len()
     }
 }
 
@@ -396,7 +378,7 @@ mod tests {
         let sender_init_balance =
             mock_gen_account(sender_account.public, sender_balance, &mut rng).unwrap();
 
-        let auditor_keys = BTreeMap::from([(AuditorId(0), mediator_account.public)]);
+        let auditor_keys = BTreeSet::from([mediator_account.public]);
         // Create the transaction and check its result and state
         let result = ConfidentialTransferProof::new(
             &sender_account,
@@ -416,7 +398,7 @@ mod tests {
 
         // Justify the transaction
         let _result = ctx_init_data
-            .auditor_verify(AuditorId(0), &mediator_account, None)
+            .auditor_verify(0, &mediator_account, None)
             .unwrap();
 
         assert!(ctx_init_data
@@ -462,17 +444,18 @@ mod tests {
     }
 
     fn test_transaction_auditor_helper(
-        sender_auditor_list: &[(AuditorId, ElgamalPublicKey)],
-        mediator_auditor_list: &[(AuditorId, ElgamalPublicKey)],
+        sender_auditor_list: &[ElgamalPublicKey],
+        mediator_auditor_list: &[ElgamalPublicKey],
         mediator_check_fails: bool,
-        validator_auditor_list: &[(AuditorId, ElgamalPublicKey)],
+        validator_auditor_list: &[ElgamalPublicKey],
         validator_check_fails: bool,
-        auditors_list: &[(AuditorId, ElgamalKeys)],
+        auditors_list: &[ElgamalKeys],
     ) {
-        let mut sender_auditor_list = BTreeMap::from_iter(sender_auditor_list.iter().copied());
-        let mut mediator_auditor_list = BTreeMap::from_iter(mediator_auditor_list.iter().copied());
+        let mut sender_auditor_list = BTreeSet::from_iter(sender_auditor_list.iter().copied());
+        let mut mediator_auditor_list = BTreeSet::from_iter(mediator_auditor_list.iter().copied());
         let mut validator_auditor_list =
-            BTreeMap::from_iter(validator_auditor_list.iter().copied());
+            BTreeSet::from_iter(validator_auditor_list.iter().copied());
+        let mut auditors_list = Vec::from(auditors_list);
         let sender_balance = 500;
         let receiver_balance = 0;
         let amount = 400;
@@ -480,10 +463,15 @@ mod tests {
         let mut rng = StdRng::from_seed([19u8; 32]);
 
         let mediator_enc_keys = mock_gen_enc_key_pair(140u8);
-        let mediator_id = AuditorId(140);
-        sender_auditor_list.insert(mediator_id, mediator_enc_keys.public);
-        mediator_auditor_list.insert(mediator_id, mediator_enc_keys.public);
-        validator_auditor_list.insert(mediator_id, mediator_enc_keys.public);
+        sender_auditor_list.insert(mediator_enc_keys.public);
+        mediator_auditor_list.insert(mediator_enc_keys.public);
+        validator_auditor_list.insert(mediator_enc_keys.public);
+        auditors_list.push(mediator_enc_keys.clone());
+        auditors_list.sort_by_key(|a| a.public);
+        let mediator_id = sender_auditor_list
+            .iter()
+            .position(|&p| p == mediator_enc_keys.public)
+            .unwrap_or_default() as u8;
 
         let (receiver_account, receiver_init_balance) =
             account_create_helper([18u8; 32], 120u8, receiver_balance);
@@ -509,9 +497,10 @@ mod tests {
             .unwrap();
 
         // Justify the transaction
-        ctx_init
+        let v_amount = ctx_init
             .auditor_verify(mediator_id, &mediator_enc_keys, None)
             .unwrap();
+        assert_eq!(amount, v_amount);
 
         let result = ctx_init.verify(
             &sender_account.public,
@@ -559,8 +548,9 @@ mod tests {
             .is_ok());
 
         // ----------------------- Auditing
-        for auditor in auditors_list {
-            assert!(ctx_init.auditor_verify(auditor.0, &auditor.1, None).is_ok());
+        for (idx, auditor) in auditors_list.iter().enumerate() {
+            let v_amount = ctx_init.auditor_verify(idx as u8, &auditor, None).unwrap();
+            assert_eq!(amount, v_amount);
         }
     }
 
@@ -569,18 +559,13 @@ mod tests {
     fn test_transaction_auditor() {
         // Make imaginary auditors.
         let auditors_num = MAX_AUDITORS - 1;
-        let auditors_secret_vec: Vec<(AuditorId, ElgamalKeys)> = (0..auditors_num)
-            .map(|index| {
-                let auditor_keys = mock_gen_enc_key_pair(index as u8);
-                (AuditorId(index), auditor_keys)
-            })
+        let auditors_secret_vec: Vec<ElgamalKeys> = (0..auditors_num)
+            .map(|index| mock_gen_enc_key_pair(index as u8))
             .collect();
         let auditors_secret_list = auditors_secret_vec.as_slice();
 
-        let auditors_vec: Vec<(AuditorId, ElgamalPublicKey)> = auditors_secret_vec
-            .iter()
-            .map(|a| (a.0, a.1.public))
-            .collect();
+        let auditors_vec: Vec<ElgamalPublicKey> =
+            auditors_secret_vec.iter().map(|a| a.public).collect();
 
         let auditors_list = auditors_vec.as_slice();
 

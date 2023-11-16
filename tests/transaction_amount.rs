@@ -3,16 +3,13 @@ use confidential_assets::{
     transaction::MAX_AUDITORS,
 };
 use rand::thread_rng;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[test]
 pub fn zero_transaction_amount() {
     let mut rng = thread_rng();
     let auditors = testing::generate_auditors(MAX_AUDITORS as usize, &mut rng);
-    let auditor_keys: BTreeMap<_, _> = auditors
-        .iter()
-        .map(|(id, keys)| (*id, keys.public))
-        .collect();
+    let auditor_keys: BTreeSet<_> = auditors.iter().map(|keys| keys.public).collect();
     let sender_balance = 1_000;
     let (sender_account, sender_init_balance) =
         testing::create_account_with_amount(&mut rng, sender_balance);

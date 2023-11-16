@@ -1,11 +1,11 @@
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
-use sp_std::collections::btree_map::BTreeMap;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::prelude::*;
 
 use crate::{
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-    elgamal::{CipherText, CipherTextHint, CommitmentWitness},
+    elgamal::{CipherText, CommitmentWitness},
     errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
@@ -18,9 +18,7 @@ use crate::{
         encryption_proofs::single_property_prover_with_transcript,
         range_proof::InRangeProof,
     },
-    transaction::{
-        Auditor, AuditorId, Auditors, ConfidentialTransferProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL,
-    },
+    transaction::{ConfidentialTransferProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL},
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 
@@ -33,7 +31,7 @@ pub struct TestSenderProofGen {
     pub sender_init_balance: CipherText,
     pub sender_balance: Balance,
     pub receiver_pub: ElgamalPublicKey,
-    pub auditor_keys: BTreeMap<AuditorId, ElgamalPublicKey>,
+    pub auditor_keys: BTreeSet<ElgamalPublicKey>,
     pub keys: Vec<ElgamalPublicKey>,
     pub amount: Balance,
     // Temps.
@@ -48,7 +46,6 @@ pub struct TestSenderProofGen {
     pub range_proofs: Option<InRangeProof>,
     pub refreshed_enc_balance: Option<CipherText>,
     pub balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
-    pub auditors: Auditors,
 }
 
 impl TestSenderProofGen {
@@ -57,7 +54,7 @@ impl TestSenderProofGen {
         sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_account: &ElgamalPublicKey,
-        auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+        auditor_keys: &BTreeSet<ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
     ) -> Self {
@@ -91,7 +88,6 @@ impl TestSenderProofGen {
             range_proofs: None,
             refreshed_enc_balance: None,
             balance_refreshed_same_proof: None,
-            auditors: Default::default(),
         }
     }
 
@@ -107,7 +103,6 @@ impl TestSenderProofGen {
             range_proofs: self.range_proofs.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
             refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
-            auditors: self.auditors,
         })
     }
 
@@ -189,23 +184,6 @@ impl TestSenderProofGen {
                     rng,
                 )?);
             }
-            6 => {
-                // Add the necessary payload for auditors.
-                self.auditors = self
-                    .auditor_keys
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
-                        (
-                            *auditor_id,
-                            Auditor {
-                                amount_idx: (idx + 2) as u8,
-                                encrypted_hint: CipherTextHint::new(&self.witness, rng),
-                            },
-                        )
-                    })
-                    .collect();
-            }
             _ => {
                 self.last_stage = u32::MAX;
                 return Ok(());
@@ -227,20 +205,17 @@ pub fn issue_assets<R: RngCore + CryptoRng>(
     init_balance + encrypted_amount
 }
 
-pub fn generate_auditors<R: RngCore + CryptoRng>(
-    count: usize,
-    rng: &mut R,
-) -> BTreeMap<AuditorId, ElgamalKeys> {
+pub fn generate_auditors<R: RngCore + CryptoRng>(count: usize, rng: &mut R) -> Vec<ElgamalKeys> {
     (0..count)
         .into_iter()
-        .map(|n| {
+        .map(|_n| {
             let secret_key = ElgamalSecretKey::new(Scalar::random(rng));
             let keys = ElgamalKeys {
                 public: secret_key.get_public_key(),
                 secret: secret_key,
             };
 
-            (AuditorId(n as u32), keys)
+            keys
         })
         .collect()
 }
