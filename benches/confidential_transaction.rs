@@ -8,7 +8,7 @@ use confidential_assets::{
     Balance, ElgamalKeys, ElgamalPublicKey,
 };
 use rand::thread_rng;
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 // The sender's initial balance. Will be in:
 // [10^MIN_SENDER_BALANCE_ORDER, 10^(MIN_SENDER_BALANCE_ORDER+1), ..., 10^MAX_SENDER_BALANCE_ORDER]
@@ -208,9 +208,9 @@ fn bench_transaction_auditor(
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, _sender_balance, init_tx) in transactions {
         let (label, amount) = if with_amount {
-          (format!("{:?} tx amount ({:?})", id, amount), Some(*amount))
+            (format!("{:?} tx amount ({:?})", id, amount), Some(*amount))
         } else {
-          (format!("{:?} without tx amount ({:?})", id, amount), None)
+            (format!("{:?} without tx amount ({:?})", id, amount), None)
         };
         group.bench_with_input(
             BenchmarkId::new("Auditor", label),
