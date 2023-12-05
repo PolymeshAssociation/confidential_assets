@@ -8,13 +8,13 @@ use confidential_assets::{
     Balance, ElgamalKeys, ElgamalPublicKey,
 };
 use rand::thread_rng;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, BTreeMap};
 
 // The sender's initial balance. Will be in:
 // [10^MIN_SENDER_BALANCE_ORDER, 10^(MIN_SENDER_BALANCE_ORDER+1), ..., 10^MAX_SENDER_BALANCE_ORDER]
 // The transferred amout on each iteration will be all the balance the sender has: 10^SENDER_BALANCE_ORDER
-pub const MIN_SENDER_BALANCE_ORDER: u32 = 10;
-pub const MAX_SENDER_BALANCE_ORDER: u32 = 20;
+pub const MIN_SENDER_BALANCE_ORDER: u32 = 8;
+pub const MAX_SENDER_BALANCE_ORDER: u32 = 13;
 
 // The receiver's initial balance.
 const RECEIVER_INIT_BALANCE: Balance = 10000;
@@ -203,16 +203,21 @@ fn bench_transaction_auditor(
     id: u8,
     keys: &ElgamalKeys,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
+    with_amount: bool,
 ) {
     let mut group = c.benchmark_group("MERCAT Transaction");
     for (amount, _sender_balance, init_tx) in transactions {
-        let label = format!("{:?} initial_balance ({:?})", id, amount);
+        let (label, amount) = if with_amount {
+          (format!("{:?} tx amount ({:?})", id, amount), Some(*amount))
+        } else {
+          (format!("{:?} without tx amount ({:?})", id, amount), None)
+        };
         group.bench_with_input(
             BenchmarkId::new("Auditor", label),
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx.auditor_verify(id, keys, None).unwrap();
+                    init_tx.auditor_verify(id, keys, amount).unwrap();
                 })
             },
         );
@@ -223,6 +228,7 @@ fn bench_transaction(c: &mut Criterion) {
     let mut rng = thread_rng();
     let auditors = testing::generate_auditors(MAX_AUDITORS as usize, &mut rng);
     let auditor_keys: BTreeSet<_> = auditors.iter().map(|keys| keys.public).collect();
+    let auditors: BTreeMap<_, _> = auditors.into_iter().map(|a| (a.public, a)).collect();
     let (sender_account, sender_init_balance) = testing::create_account_with_amount(&mut rng, 0);
     let sender_pub_account = sender_account.public.clone();
 
@@ -289,7 +295,9 @@ fn bench_transaction(c: &mut Criterion) {
     bench_transaction_receiver(c, receiver_account.clone(), transactions.as_slice());
 
     // Mediator verify transaction amount.
-    bench_transaction_auditor(c, 0, &auditors[0], transactions.as_slice());
+    let (_, auditor) = auditors.first_key_value().unwrap();
+    bench_transaction_auditor(c, 0, auditor, transactions.as_slice(), true);
+    bench_transaction_auditor(c, 0, auditor, transactions.as_slice(), false);
 }
 
 criterion_group! {
