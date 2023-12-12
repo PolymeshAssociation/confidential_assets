@@ -11,7 +11,7 @@ bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociatio
 
 [dependencies]
 # Substrate
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/PolymeshAssociation/substrate", branch = "polymesh-v6-monthly-2023-03" }
+sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/PolymeshAssociation/polkadot-sdk", branch = "polymesh-v6-monthly-2023-03" }
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.0", default-features = false, features = ["derive"] }
 
