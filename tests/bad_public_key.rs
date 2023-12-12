@@ -95,8 +95,9 @@ pub fn bad_public_key() {
     let z = *final_response.0;
     let a = initial_message.a.decompress();
     let b = initial_message.b.decompress();
-    let x = *sender_init_balance.x - *tx.refreshed_enc_balance.x;
-    let y = *sender_init_balance.y - *tx.refreshed_enc_balance.y;
+    let inner = tx.inner_proof().expect("Ok");
+    let x = *sender_init_balance.x - *inner.refreshed_enc_balance.x;
+    let y = *sender_init_balance.y - *inner.refreshed_enc_balance.y;
     // This check fails like it should.
     assert!(z * y != a + c * x);
     // ATTACK: causes this to pass.

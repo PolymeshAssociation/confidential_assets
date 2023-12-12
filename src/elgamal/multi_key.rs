@@ -7,8 +7,9 @@ use crate::{
 
 use bulletproofs::PedersenGens;
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use sp_std::prelude::*;
 
 /// Encrypt a secret using multiple public keys.
 #[derive(Clone, Encode, Decode, Default, Debug)]

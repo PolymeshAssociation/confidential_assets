@@ -26,9 +26,10 @@ use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
 use merlin::Transcript;
-use sp_std::collections::btree_map::BTreeMap;
-use sp_std::collections::btree_set::BTreeSet;
-use sp_std::prelude::*;
+#[cfg(not(feature = "std"))]
+use alloc::{self as std, vec::Vec};
+use std::collections::btree_map::BTreeMap;
+use std::collections::btree_set::BTreeSet;
 
 pub const MAX_AUDITORS: u32 = 8;
 pub const MAX_TOTAL_SUPPLY: u64 = 1_000_000_000_000u64;

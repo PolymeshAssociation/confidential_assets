@@ -16,7 +16,7 @@ use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 
-use sp_std::convert::TryInto;
+use core::convert::TryInto;
 
 pub trait TranscriptProtocol {
     /// If the inputted message is not trivial append it to the

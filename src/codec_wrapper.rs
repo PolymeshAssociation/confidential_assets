@@ -6,8 +6,9 @@ use curve25519_dalek::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use codec::{Compact, CompactLen, Decode, Encode, Error as CodecError, Input, Output};
-use sp_std::prelude::*;
 
 use core::ops::{Deref, DerefMut};
 

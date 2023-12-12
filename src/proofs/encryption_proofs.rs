@@ -4,7 +4,7 @@
 use curve25519_dalek::scalar::Scalar;
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-use sp_std::convert::TryFrom;
+use core::convert::TryFrom;
 
 use crate::errors::{Error, Result};
 use crate::proofs::transcript::{TranscriptProtocol, UpdateTranscript};
@@ -245,7 +245,7 @@ mod tests {
     };
     use bulletproofs::PedersenGens;
     use rand::{rngs::StdRng, SeedableRng};
-    use sp_std::convert::TryFrom;
+    use core::convert::TryFrom;
     use wasm_bindgen_test::*;
 
     const SEED_1: [u8; 32] = [42u8; 32];

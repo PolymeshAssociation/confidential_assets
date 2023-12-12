@@ -27,7 +27,7 @@ pub mod transaction;
 pub mod testing;
 
 pub use elgamal::{
-    CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
+    CipherText, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
 };
 pub use errors::{Error, Result};
 pub use proofs::{

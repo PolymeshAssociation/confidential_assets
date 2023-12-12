@@ -1,7 +1,8 @@
 use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
-use sp_std::collections::btree_set::BTreeSet;
-use sp_std::prelude::*;
+#[cfg(not(feature = "std"))]
+use alloc::{self as std, vec::Vec};
+use std::collections::btree_set::BTreeSet;
 use codec::Encode;
 
 use crate::{

@@ -20,15 +20,14 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
-use sp_std::prelude::*;
 
 use core::cmp::Ordering;
 
+#[cfg(feature = "sha3")]
 pub mod const_time_elgamal_encryption;
 #[cfg(feature = "discrete_log")]
 pub mod discrete_log;
 pub mod multi_key;
-pub use const_time_elgamal_encryption::{CipherTextHint, CipherTextWithHint};
 
 /// Prover's representation of the commitment secret.
 #[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop, Debug)]

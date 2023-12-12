@@ -182,7 +182,6 @@ mod tests {
         proofs::encryption_proofs::{single_property_prover, single_property_verifier},
     };
     use rand::{rngs::StdRng, SeedableRng};
-    use sp_std::prelude::*;
     use wasm_bindgen_test::*;
 
     const SEED_1: [u8; 32] = [42u8; 32];

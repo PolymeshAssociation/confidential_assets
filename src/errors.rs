@@ -115,4 +115,4 @@ impl From<bulletproofs::ProofError> for Error {
     }
 }
 
-pub type Result<T, E = Error> = sp_std::result::Result<T, E>;
+pub type Result<T, E = Error> = core::result::Result<T, E>;
