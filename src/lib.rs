@@ -26,9 +26,7 @@ pub mod transaction;
 #[doc(hidden)]
 pub mod testing;
 
-pub use elgamal::{
-    CipherText, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
-};
+pub use elgamal::{CipherText, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey};
 pub use errors::{Error, Result};
 pub use proofs::{
     ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,

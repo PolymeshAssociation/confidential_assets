@@ -8,10 +8,7 @@ use crate::Balance;
 #[cfg_attr(feature = "std", derive(Error))]
 pub enum Error {
     /// Parity SCALE codec error.
-    #[cfg_attr(
-        feature = "std",
-        error("Parity SCALE codec error")
-    )]
+    #[cfg_attr(feature = "std", error("Parity SCALE codec error"))]
     ParityScaleCodec(codec::Error),
 
     /// Encrypted value was not found within the valid range.

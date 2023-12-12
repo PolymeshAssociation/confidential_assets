@@ -18,16 +18,15 @@ use crate::{
         encryption_proofs::single_property_verifier_with_transcript,
         range_proof::InRangeProof,
     },
-    AssetId,
-    Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
+    AssetId, Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
 };
 
 use rand_core::{CryptoRng, RngCore};
 
-use codec::{Decode, Encode};
-use merlin::Transcript;
 #[cfg(not(feature = "std"))]
 use alloc::{self as std, vec::Vec};
+use codec::{Decode, Encode};
+use merlin::Transcript;
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 
@@ -76,7 +75,7 @@ impl AssetTransferWithSecret {
 /// A set of confidential asset transfers between the same sender & receiver.
 #[derive(Clone, Encode, Decode, Debug)]
 pub struct ConfidentialTransfers {
-  pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
+    pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
 }
 
 impl ConfidentialTransfers {
@@ -88,9 +87,14 @@ impl ConfidentialTransfers {
         rng: &mut T,
     ) -> Result<Self> {
         Ok(Self {
-            proofs: transfers.into_iter().map(|(asset, transfer)| {
-              transfer.into_proof(sender, receiver, rng).map(|p| (asset, p))
-            }).collect::<Result<_>>()?,
+            proofs: transfers
+                .into_iter()
+                .map(|(asset, transfer)| {
+                    transfer
+                        .into_proof(sender, receiver, rng)
+                        .map(|p| (asset, p))
+                })
+                .collect::<Result<_>>()?,
         })
     }
 
@@ -103,16 +107,25 @@ impl ConfidentialTransfers {
         rng: &mut R,
     ) -> Result<()> {
         // Ensure the number of assets is the same.
-        ensure!(self.proofs.len() == transfers.len(), Error::VerificationError);
+        ensure!(
+            self.proofs.len() == transfers.len(),
+            Error::VerificationError
+        );
         for (asset, proof) in &self.proofs {
             match transfers.get(asset) {
-              Some(transfer) => {
-                  proof.verify(sender, &transfer.sender_enc_balance, receiver, &transfer.auditors_keys, rng)?;
-              }
-              None => {
-                log::warn!("Missing asset {asset:?}.");
-                return Err(Error::VerificationError);
-              }
+                Some(transfer) => {
+                    proof.verify(
+                        sender,
+                        &transfer.sender_enc_balance,
+                        receiver,
+                        &transfer.auditors_keys,
+                        rng,
+                    )?;
+                }
+                None => {
+                    log::warn!("Missing asset {asset:?}.");
+                    return Err(Error::VerificationError);
+                }
             }
         }
         Ok(())
@@ -156,11 +169,7 @@ impl ConfidentialTransferProof {
         sender_account.verify(sender_init_balance, &sender_balance.into())?;
 
         // All public keys.
-        let keys = Self::keys(
-            &sender_account.public,
-            receiver_key,
-            auditors_keys,
-        )?;
+        let keys = Self::keys(&sender_account.public, receiver_key, auditors_keys)?;
 
         // CommitmentWitness for transaction amount.
         let witness = CommitmentWitness::new(amount.into(), Scalar::random(rng));
@@ -241,10 +250,7 @@ impl ConfidentialTransferProof {
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
         let a_len = self.amounts.len() - 2;
         ensure!(a_len <= MAX_AUDITORS as usize, Error::TooManyAuditors);
-        ensure!(
-            a_len == auditors_keys.len(),
-            Error::WrongNumberOfAuditors
-        );
+        ensure!(a_len == auditors_keys.len(), Error::WrongNumberOfAuditors);
 
         // Collect all public keys (Sender, Receiver, Auditors...).
         let keys = Self::keys(sender_account, receiver_account, auditors_keys)?;
@@ -383,7 +389,9 @@ impl ConfidentialTransferProof {
     }
 
     pub fn inner_proof(&self) -> Result<ConfidentialTransferInnerProof> {
-      Ok(ConfidentialTransferInnerProof::decode(&mut self.encoded_inner_proof.as_slice())?)
+        Ok(ConfidentialTransferInnerProof::decode(
+            &mut self.encoded_inner_proof.as_slice(),
+        )?)
     }
 
     pub(crate) fn keys(
@@ -405,7 +413,6 @@ impl ConfidentialTransferProof {
 
         Ok(keys)
     }
-
 }
 
 /// Holds the zk-proofs of the confidential transaction sent by the sender.

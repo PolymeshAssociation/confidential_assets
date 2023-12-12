@@ -1,9 +1,9 @@
-use merlin::Transcript;
-use rand_core::{CryptoRng, RngCore};
 #[cfg(not(feature = "std"))]
 use alloc::{self as std, vec::Vec};
-use std::collections::btree_set::BTreeSet;
 use codec::Encode;
+use merlin::Transcript;
+use rand_core::{CryptoRng, RngCore};
+use std::collections::btree_set::BTreeSet;
 
 use crate::{
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
@@ -20,7 +20,10 @@ use crate::{
         encryption_proofs::single_property_prover_with_transcript,
         range_proof::InRangeProof,
     },
-    transaction::{ConfidentialTransferProof, ConfidentialTransferInnerProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL},
+    transaction::{
+        ConfidentialTransferInnerProof, ConfidentialTransferProof,
+        CONFIDENTIAL_TRANSFER_PROOF_LABEL,
+    },
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 

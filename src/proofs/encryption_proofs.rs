@@ -1,10 +1,10 @@
 //! Encryption proofs' interface definitions and
 //! Non-Interactive Zero Knowledge Proof API.
 
+use core::convert::TryFrom;
 use curve25519_dalek::scalar::Scalar;
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-use core::convert::TryFrom;
 
 use crate::errors::{Error, Result};
 use crate::proofs::transcript::{TranscriptProtocol, UpdateTranscript};
@@ -244,8 +244,8 @@ mod tests {
         },
     };
     use bulletproofs::PedersenGens;
-    use rand::{rngs::StdRng, SeedableRng};
     use core::convert::TryFrom;
+    use rand::{rngs::StdRng, SeedableRng};
     use wasm_bindgen_test::*;
 
     const SEED_1: [u8; 32] = [42u8; 32];
