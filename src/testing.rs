@@ -2,6 +2,7 @@ use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::prelude::*;
+use codec::Encode;
 
 use crate::{
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
@@ -18,7 +19,7 @@ use crate::{
         encryption_proofs::single_property_prover_with_transcript,
         range_proof::InRangeProof,
     },
-    transaction::{ConfidentialTransferProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL},
+    transaction::{ConfidentialTransferProof, ConfidentialTransferInnerProof, CONFIDENTIAL_TRANSFER_PROOF_LABEL},
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 
@@ -97,12 +98,15 @@ impl TestSenderProofGen {
     ) -> Result<ConfidentialTransferProof> {
         self.run_to_stage(u32::MAX, rng)?;
 
-        Ok(ConfidentialTransferProof {
-            amounts: self.amounts.unwrap(),
+        let inner = ConfidentialTransferInnerProof {
             amount_equal_cipher_proof: self.amount_equal_cipher_proof.unwrap(),
             range_proofs: self.range_proofs.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
             refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
+        };
+        Ok(ConfidentialTransferProof {
+            amounts: self.amounts.unwrap(),
+            encoded_inner_proof: inner.encode(),
         })
     }
 

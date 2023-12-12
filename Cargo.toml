@@ -20,6 +20,9 @@ serde = { version = "1.0.105", default-features = false, features = ["derive"], 
 zeroize = { version = "1.1", default-features = false }
 byteorder = { version = "^1.2.3", default-features = false, features = ["i128"] }
 thiserror = "1.0.44"
+log = "0.4"
+
+uuid = { version = "1.6", default-features = false }
 
 # Crypto
 sha3 = { version = "0.9", default-features = false }
@@ -71,6 +74,7 @@ std = [
  # Other
  "codec/std",
  "sp-std/std",
+ "uuid/std",
 ]
 
 [[bench]]

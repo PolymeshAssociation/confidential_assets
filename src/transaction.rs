@@ -18,6 +18,7 @@ use crate::{
         encryption_proofs::single_property_verifier_with_transcript,
         range_proof::InRangeProof,
     },
+    AssetId,
     Balance, ElgamalKeys, Scalar, BALANCE_RANGE,
 };
 
@@ -25,6 +26,7 @@ use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
 use merlin::Transcript;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::prelude::*;
 
@@ -34,57 +36,109 @@ pub const MAX_TOTAL_SUPPLY: u64 = 1_000_000_000_000u64;
 /// The domain label for the Confidential Transfer proofs.
 pub const CONFIDENTIAL_TRANSFER_PROOF_LABEL: &[u8] = b"PolymeshConfidentialTransferProof";
 
+/// Public input parameters needed to verify confidential transfer proof.
+#[derive(Clone, Encode, Decode, Debug)]
+pub struct AssetTransfer {
+    pub sender_enc_balance: CipherText,
+    pub auditors_keys: BTreeSet<ElgamalPublicKey>,
+}
+
+/// Input parameters (including unencrypted values) needed to generate confidential transfer proof.
+#[derive(Clone, Encode, Decode, Debug)]
+pub struct AssetTransferWithSecret {
+    pub sender_enc_balance: CipherText,
+    pub auditors_keys: BTreeSet<ElgamalPublicKey>,
+    pub sender_balance: Balance,
+    pub amount: Balance,
+}
+
+impl AssetTransferWithSecret {
+    /// Create a confidential asset transfer proof.
+    pub fn into_proof<T: RngCore + CryptoRng>(
+        self,
+        sender: &ElgamalKeys,
+        receiver: &ElgamalPublicKey,
+        rng: &mut T,
+    ) -> Result<ConfidentialTransferProof> {
+        Ok(ConfidentialTransferProof::new(
+            sender,
+            &self.sender_enc_balance,
+            self.sender_balance,
+            receiver,
+            &self.auditors_keys,
+            self.amount,
+            rng,
+        )?)
+    }
+}
+
+/// A set of confidential asset transfers between the same sender & receiver.
+#[derive(Clone, Encode, Decode, Debug)]
+pub struct ConfidentialTransfers {
+  pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
+}
+
+impl ConfidentialTransfers {
+    /// Create a set of confidential asset transfer proofs.
+    pub fn new<T: RngCore + CryptoRng>(
+        sender: &ElgamalKeys,
+        receiver: &ElgamalPublicKey,
+        transfers: BTreeMap<AssetId, AssetTransferWithSecret>,
+        rng: &mut T,
+    ) -> Result<Self> {
+        Ok(Self {
+            proofs: transfers.into_iter().map(|(asset, transfer)| {
+              transfer.into_proof(sender, receiver, rng).map(|p| (asset, p))
+            }).collect::<Result<_>>()?,
+        })
+    }
+
+    /// Verify the ZK-proofs using only public information.
+    pub fn verify<R: RngCore + CryptoRng>(
+        &self,
+        sender: &ElgamalPublicKey,
+        receiver: &ElgamalPublicKey,
+        transfers: BTreeMap<AssetId, AssetTransfer>,
+        rng: &mut R,
+    ) -> Result<()> {
+        // Ensure the number of assets is the same.
+        ensure!(self.proofs.len() == transfers.len(), Error::VerificationError);
+        for (asset, proof) in &self.proofs {
+            match transfers.get(asset) {
+              Some(transfer) => {
+                  proof.verify(sender, &transfer.sender_enc_balance, receiver, &transfer.auditors_keys, rng)?;
+              }
+              None => {
+                log::warn!("Missing asset {asset:?}.");
+                return Err(Error::VerificationError);
+              }
+            }
+        }
+        Ok(())
+    }
+}
+
 // -------------------------------------------------------------------------------------
 // -                       Confidential Transfer Transaction                           -
 // -------------------------------------------------------------------------------------
 
-/// Holds the proofs and memo of the confidential transaction sent by the sender.
+/// The confidential transfer proof created by the sender.
 #[derive(Clone, Encode, Decode, Debug)]
 pub struct ConfidentialTransferProof {
-    /// Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
-    pub amounts: CipherTextMultiKey,
-    /// ZK-proof that all encrypted transaction amounts in `amounts` is the same value.
-    pub amount_equal_cipher_proof: CipherTextSameValueProof,
-    /// The sender's balance re-encrypted using a new blinding.
-    ///
-    /// This encrypted value is needed for the "Enough funds" range proof, because the
-    /// blinding value needs to be known and we don't want the users to have to keep
-    /// an updated copy of the blinding value.
-    pub refreshed_enc_balance: CipherText,
-    /// ZK-proof that `refreshed_enc_balance` encrypts the same value as the sender's balance.
-    pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
-    /// Bulletproof range proofs for "Non negative amount" and "Enough funds".
-    pub range_proofs: InRangeProof,
+    // Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
+    pub(crate) amounts: CipherTextMultiKey,
+    // SCALE encoded inner proof.
+    pub(crate) encoded_inner_proof: Vec<u8>,
 }
 
 impl ConfidentialTransferProof {
-    pub fn keys(
-        sender_key: &ElgamalPublicKey,
-        receiver_key: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
-    ) -> Result<Vec<ElgamalPublicKey>> {
-        ensure!(
-            auditors_enc_pub_keys.len() <= MAX_AUDITORS as usize,
-            Error::TooManyAuditors
-        );
-        // All public keys.
-        let mut keys = Vec::with_capacity(auditors_enc_pub_keys.len() + 2);
-        keys.push(*sender_key);
-        keys.push(*receiver_key);
-        for auditor in auditors_enc_pub_keys {
-            keys.push(*auditor);
-        }
-
-        Ok(keys)
-    }
-
     /// Create a confidential asset transfer proof.
     pub fn new<T: RngCore + CryptoRng>(
         sender_account: &ElgamalKeys,
         sender_init_balance: &CipherText,
         sender_balance: Balance,
-        receiver_pub_key: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
+        receiver_key: &ElgamalPublicKey,
+        auditors_keys: &BTreeSet<ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
     ) -> Result<Self> {
@@ -103,8 +157,8 @@ impl ConfidentialTransferProof {
         // All public keys.
         let keys = Self::keys(
             &sender_account.public,
-            receiver_pub_key,
-            auditors_enc_pub_keys,
+            receiver_key,
+            auditors_keys,
         )?;
 
         // CommitmentWitness for transaction amount.
@@ -158,12 +212,15 @@ impl ConfidentialTransferProof {
             rng,
         )?;
 
-        Ok(Self {
-            amounts,
+        let inner = ConfidentialTransferInnerProof {
             amount_equal_cipher_proof,
             range_proofs,
             balance_refreshed_same_proof,
             refreshed_enc_balance,
+        };
+        Ok(Self {
+            amounts,
+            encoded_inner_proof: inner.encode(),
         })
     }
 
@@ -173,7 +230,7 @@ impl ConfidentialTransferProof {
         sender_account: &ElgamalPublicKey,
         sender_init_balance: &CipherText,
         receiver_account: &ElgamalPublicKey,
-        auditors_enc_pub_keys: &BTreeSet<ElgamalPublicKey>,
+        auditors_keys: &BTreeSet<ElgamalPublicKey>,
         rng: &mut R,
     ) -> Result<()> {
         let mut transcript = Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL);
@@ -184,22 +241,26 @@ impl ConfidentialTransferProof {
         let a_len = self.amounts.len() - 2;
         ensure!(a_len <= MAX_AUDITORS as usize, Error::TooManyAuditors);
         ensure!(
-            a_len == auditors_enc_pub_keys.len(),
+            a_len == auditors_keys.len(),
             Error::WrongNumberOfAuditors
         );
 
         // Collect all public keys (Sender, Receiver, Auditors...).
-        let keys = Self::keys(sender_account, receiver_account, auditors_enc_pub_keys)?;
+        let keys = Self::keys(sender_account, receiver_account, auditors_keys)?;
         // Ensure that the transaction amount was encrypyted with all keys.
         ensure!(
             keys.len() == self.amounts.len(),
             Error::WrongNumberOfAuditors
         );
+
+        // Decode the inner proof.
+        let inner = self.inner_proof()?;
+
         // Verify that the encrypted amounts are equal.
         single_property_verifier_with_transcript(
             &mut transcript,
             &CipherTextSameValueVerifier::new(keys, self.amounts.ciphertexts(), &gens),
-            &self.amount_equal_cipher_proof,
+            &inner.amount_equal_cipher_proof,
         )?;
 
         // verify that the balance refreshment was done correctly.
@@ -208,18 +269,18 @@ impl ConfidentialTransferProof {
             &CipherTextRefreshmentVerifier::new(
                 *sender_account,
                 *sender_init_balance,
-                self.refreshed_enc_balance,
+                inner.refreshed_enc_balance,
                 &gens,
             ),
-            &self.balance_refreshed_same_proof,
+            &inner.balance_refreshed_same_proof,
         )?;
 
         // Verify that the amount is not negative and
         // verify that the balance has enough fund.
-        let amount_commitment = self.sender_amount().y.compress();
-        let updated_balance = self.refreshed_enc_balance - self.sender_amount();
+        let amount_commitment = *self.amounts.y;
+        let updated_balance = inner.refreshed_enc_balance - self.sender_amount();
         let updated_balance_commitment = updated_balance.y.compress();
-        self.range_proofs.verify_multiple(
+        inner.range_proofs.verify_multiple(
             &gens,
             &mut transcript,
             &[amount_commitment, updated_balance_commitment],
@@ -319,6 +380,48 @@ impl ConfidentialTransferProof {
     pub fn auditor_count(&self) -> usize {
         self.amounts.len() - 2
     }
+
+    pub fn inner_proof(&self) -> Result<ConfidentialTransferInnerProof> {
+      Ok(ConfidentialTransferInnerProof::decode(&mut self.encoded_inner_proof.as_slice())?)
+    }
+
+    pub(crate) fn keys(
+        sender_key: &ElgamalPublicKey,
+        receiver_key: &ElgamalPublicKey,
+        auditors_keys: &BTreeSet<ElgamalPublicKey>,
+    ) -> Result<Vec<ElgamalPublicKey>> {
+        ensure!(
+            auditors_keys.len() <= MAX_AUDITORS as usize,
+            Error::TooManyAuditors
+        );
+        // All public keys.
+        let mut keys = Vec::with_capacity(auditors_keys.len() + 2);
+        keys.push(*sender_key);
+        keys.push(*receiver_key);
+        for auditor in auditors_keys {
+            keys.push(*auditor);
+        }
+
+        Ok(keys)
+    }
+
+}
+
+/// Holds the zk-proofs of the confidential transaction sent by the sender.
+#[derive(Clone, Encode, Decode, Debug)]
+pub struct ConfidentialTransferInnerProof {
+    /// ZK-proof that all encrypted transaction amounts in `amounts` is the same value.
+    pub amount_equal_cipher_proof: CipherTextSameValueProof,
+    /// The sender's balance re-encrypted using a new blinding.
+    ///
+    /// This encrypted value is needed for the "Enough funds" range proof, because the
+    /// blinding value needs to be known and we don't want the users to have to keep
+    /// an updated copy of the blinding value.
+    pub refreshed_enc_balance: CipherText,
+    /// ZK-proof that `refreshed_enc_balance` encrypts the same value as the sender's balance.
+    pub balance_refreshed_same_proof: CipherEqualSamePubKeyProof,
+    /// Bulletproof range proofs for "Non negative amount" and "Enough funds".
+    pub range_proofs: InRangeProof,
 }
 
 // ------------------------------------------------------------------------
@@ -348,11 +451,11 @@ mod tests {
     }
 
     fn mock_gen_account<R: RngCore + CryptoRng>(
-        receiver_enc_pub_key: ElgamalPublicKey,
+        receiver_key: ElgamalPublicKey,
         balance: Balance,
         rng: &mut R,
     ) -> Result<CipherText> {
-        let (_, enc_balance) = receiver_enc_pub_key.encrypt_value(Scalar::from(balance), rng);
+        let (_, enc_balance) = receiver_key.encrypt_value(Scalar::from(balance), rng);
 
         Ok(enc_balance)
     }
