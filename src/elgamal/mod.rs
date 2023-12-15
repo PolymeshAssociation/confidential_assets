@@ -4,7 +4,9 @@
 //! addition and subtraction API over the cipher texts.
 
 use crate::{
-    codec_wrapper::{WrappedRistretto, WrappedScalar, RISTRETTO_POINT_SIZE},
+    codec_wrapper::{
+        WrappedCompressedRistretto, WrappedRistretto, WrappedScalar, RISTRETTO_POINT_SIZE,
+    },
     errors::{Error, Result},
     Balance,
 };
@@ -18,7 +20,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, Encode, Error as CodecError, Input, MaxEncodedLen};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 
 use core::cmp::Ordering;
@@ -178,18 +180,7 @@ impl ElgamalSecretKey {
 
 /// Compressed ElgamalPublicKey.
 #[derive(
-    Copy,
-    Clone,
-    Default,
-    Encode,
-    Decode,
-    MaxEncodedLen,
-    TypeInfo,
-    PartialOrd,
-    Ord,
-    PartialEq,
-    Eq,
-    Debug,
+    Copy, Clone, Default, Encode, MaxEncodedLen, TypeInfo, PartialOrd, Ord, PartialEq, Eq, Debug,
 )]
 pub struct CompressedElgamalPublicKey([u8; 32]);
 
@@ -203,6 +194,14 @@ impl CompressedElgamalPublicKey {
         compressed.decompress().map(|pub_key| ElgamalPublicKey {
             pub_key: pub_key.into(),
         })
+    }
+}
+
+impl Decode for CompressedElgamalPublicKey {
+    /// Decodes a `CompressedElgamalPublicKey` from an array of bytes.
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let compressed = WrappedCompressedRistretto::decode(input)?;
+        Ok(Self(compressed.0))
     }
 }
 
