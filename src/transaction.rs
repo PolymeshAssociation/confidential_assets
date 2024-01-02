@@ -74,44 +74,9 @@ impl AssetTransferWithSecret {
 }
 
 /// A set of confidential asset transfers between the same sender & receiver.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Encode, Decode, TypeInfo, PartialEq, Eq)]
 pub struct ConfidentialTransfers {
     pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
-}
-
-impl TypeInfo for ConfidentialTransfers {
-    type Identity = Self;
-    fn type_info() -> Type {
-        Type::builder()
-            .path(Path::new("ConfidentialTransfers", module_path!()))
-            .composite(
-                Fields::unnamed()
-                    .field(|f| f.ty::<Vec<u8>>().type_name("EncodedConfidentialTransfers")),
-            )
-    }
-}
-
-impl Encode for ConfidentialTransfers {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        core::mem::size_of::<u32>() + self.proofs.size_hint()
-    }
-
-    /// Encodes as a `Vec<u8>`.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        let buf = self.proofs.encode();
-        buf.encode_to(dest);
-    }
-}
-
-impl Decode for ConfidentialTransfers {
-    /// Decode a `ConfidentialTransfers` .
-    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
-        let buf = <Vec<u8>>::decode(input)?;
-        Ok(Self {
-            proofs: Decode::decode(&mut buf.as_slice())?,
-        })
-    }
 }
 
 impl ConfidentialTransfers {
@@ -173,12 +138,51 @@ impl ConfidentialTransfers {
 // -------------------------------------------------------------------------------------
 
 /// The confidential transfer proof created by the sender.
-#[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfidentialTransferProof {
     // Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
     pub(crate) amounts: CipherTextMultiKey,
     // SCALE encoded inner proof.
     pub(crate) encoded_inner_proof: Vec<u8>,
+}
+
+impl TypeInfo for ConfidentialTransferProof {
+    type Identity = Self;
+    fn type_info() -> Type {
+        Type::builder()
+            .path(Path::new("ConfidentialTransferProof", module_path!()))
+            .composite(Fields::unnamed().field(|f| {
+                f.ty::<Vec<u8>>()
+                    .type_name("EncodedConfidentialTransferProof")
+            }))
+    }
+}
+
+impl Encode for ConfidentialTransferProof {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        core::mem::size_of::<u32>()
+            + self.amounts.size_hint()
+            + self.encoded_inner_proof.size_hint()
+    }
+
+    /// Encodes as a `Vec<u8>`.
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        let buf = (&self.amounts, &self.encoded_inner_proof).encode();
+        buf.encode_to(dest);
+    }
+}
+
+impl Decode for ConfidentialTransferProof {
+    /// Decode a `ConfidentialTransferProof` .
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let buf = <Vec<u8>>::decode(input)?;
+        let mut data = buf.as_slice();
+        Ok(Self {
+            amounts: Decode::decode(&mut data)?,
+            encoded_inner_proof: Decode::decode(&mut data)?,
+        })
+    }
 }
 
 impl ConfidentialTransferProof {
