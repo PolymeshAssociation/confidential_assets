@@ -25,8 +25,9 @@ use rand_core::{CryptoRng, RngCore};
 
 #[cfg(not(feature = "std"))]
 use alloc::{self as std, vec::Vec};
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, Error as CodecError, Input, Output};
 use merlin::Transcript;
+use scale_info::{build::Fields, Path, Type, TypeInfo};
 use std::collections::btree_map::BTreeMap;
 use std::collections::btree_set::BTreeSet;
 
@@ -73,9 +74,44 @@ impl AssetTransferWithSecret {
 }
 
 /// A set of confidential asset transfers between the same sender & receiver.
-#[derive(Clone, Encode, Decode, Debug)]
+#[derive(Clone, Debug)]
 pub struct ConfidentialTransfers {
     pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
+}
+
+impl TypeInfo for ConfidentialTransfers {
+    type Identity = Self;
+    fn type_info() -> Type {
+        Type::builder()
+            .path(Path::new("ConfidentialTransfers", module_path!()))
+            .composite(
+                Fields::unnamed()
+                    .field(|f| f.ty::<Vec<u8>>().type_name("EncodedConfidentialTransfers")),
+            )
+    }
+}
+
+impl Encode for ConfidentialTransfers {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        core::mem::size_of::<u32>() + self.proofs.size_hint()
+    }
+
+    /// Encodes as a `Vec<u8>`.
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        let buf = self.proofs.encode();
+        buf.encode_to(dest);
+    }
+}
+
+impl Decode for ConfidentialTransfers {
+    /// Decode a `ConfidentialTransfers` .
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let buf = <Vec<u8>>::decode(input)?;
+        Ok(Self {
+            proofs: Decode::decode(&mut buf.as_slice())?,
+        })
+    }
 }
 
 impl ConfidentialTransfers {
@@ -248,7 +284,7 @@ impl ConfidentialTransferProof {
 
         // Verify that all auditors' payload is included, and
         // that the auditors' ciphertexts encrypt the same amount as sender's ciphertext.
-        let a_len = self.amounts.len() - 2;
+        let a_len = self.auditor_count()?;
         ensure!(a_len <= MAX_AUDITORS as usize, Error::TooManyAuditors);
         ensure!(a_len == auditors_keys.len(), Error::WrongNumberOfAuditors);
 
@@ -384,8 +420,11 @@ impl ConfidentialTransferProof {
         self.amount(1)
     }
 
-    pub fn auditor_count(&self) -> usize {
-        self.amounts.len() - 2
+    pub fn auditor_count(&self) -> Result<usize> {
+        let a_len = self.amounts.len();
+        // Ensure a valid number of encryped amounts.  Must have at least two.
+        ensure!(a_len >= 2, Error::VerificationError);
+        Ok(a_len - 2)
     }
 
     pub fn inner_proof(&self) -> Result<ConfidentialTransferInnerProof> {
