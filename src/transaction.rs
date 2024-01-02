@@ -74,7 +74,7 @@ impl AssetTransferWithSecret {
 }
 
 /// A set of confidential asset transfers between the same sender & receiver.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfidentialTransfers {
     pub proofs: BTreeMap<AssetId, ConfidentialTransferProof>,
 }
@@ -173,7 +173,7 @@ impl ConfidentialTransfers {
 // -------------------------------------------------------------------------------------
 
 /// The confidential transfer proof created by the sender.
-#[derive(Clone, Encode, Decode, Debug)]
+#[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
 pub struct ConfidentialTransferProof {
     // Transaction amount encrypted with all public keys (sender, receiver and auditor keys).
     pub(crate) amounts: CipherTextMultiKey,

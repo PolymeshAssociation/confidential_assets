@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
 /// Encrypt a secret using multiple public keys.
-#[derive(Clone, Encode, Decode, Default, Debug)]
+#[derive(Clone, Encode, Decode, Default, Debug, PartialEq, Eq)]
 pub struct CipherTextMultiKey {
     pub x: Vec<WrappedCompressedRistretto>,
     pub y: WrappedCompressedRistretto,
