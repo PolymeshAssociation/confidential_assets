@@ -168,7 +168,7 @@ impl Encode for ConfidentialTransferProof {
 
     /// Encodes as a `Vec<u8>`.
     fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        let buf = (&self.amounts, &self.encoded_inner_proof).encode();
+        let buf = self.as_bytes();
         buf.encode_to(dest);
     }
 }
@@ -455,6 +455,10 @@ impl ConfidentialTransferProof {
         }
 
         Ok(keys)
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        (&self.amounts, &self.encoded_inner_proof).encode()
     }
 }
 
