@@ -19,7 +19,7 @@ use rand_core::{CryptoRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
-use sp_std::convert::From;
+use core::convert::From;
 
 /// The domain label for the correctness proof.
 pub const CORRECTNESS_PROOF_LABEL: &[u8] = b"PolymeshCorrectnessProof";

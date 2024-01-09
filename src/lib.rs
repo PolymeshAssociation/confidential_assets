@@ -26,9 +26,7 @@ pub mod transaction;
 #[doc(hidden)]
 pub mod testing;
 
-pub use elgamal::{
-    CipherText, CipherTextWithHint, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey,
-};
+pub use elgamal::{CipherText, CompressedElgamalPublicKey, ElgamalPublicKey, ElgamalSecretKey};
 pub use errors::{Error, Result};
 pub use proofs::{
     ciphertext_refreshment_proof::CipherEqualSamePubKeyProof, correctness_proof::CorrectnessProof,
@@ -55,6 +53,8 @@ pub use proofs::{
 ///    encryption mechanism to store the confidentional values on disk.
 pub type Balance = u64;
 pub const BALANCE_RANGE: u32 = 64;
+
+pub type AssetId = uuid::Bytes;
 
 // -------------------------------------------------------------------------------------
 // -                                 New Type Def                                      -

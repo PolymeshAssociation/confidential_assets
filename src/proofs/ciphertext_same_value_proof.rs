@@ -19,8 +19,9 @@ use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use codec::{Decode, Encode};
-use sp_std::prelude::*;
 
 /// The domain label for the encrypting the same value proof.
 pub const CIPHERTEXT_SAME_VALUE_PROOF_LABEL: &[u8] = b"PolymeshCipherTextSameValueProof";
