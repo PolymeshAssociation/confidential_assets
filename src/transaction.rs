@@ -460,6 +460,13 @@ impl ConfidentialTransferProof {
     pub fn as_bytes(&self) -> Vec<u8> {
         (&self.amounts, &self.encoded_inner_proof).encode()
     }
+
+    pub fn from_bytes<I: Input>(input: &mut I) -> Result<Self> {
+        Ok(Self {
+            amounts: Decode::decode(input)?,
+            encoded_inner_proof: Decode::decode(input)?,
+        })
+    }
 }
 
 /// Holds the zk-proofs of the confidential transaction sent by the sender.
