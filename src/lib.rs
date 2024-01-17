@@ -18,6 +18,7 @@ pub(crate) mod macros;
 
 pub mod errors;
 
+pub mod burn;
 pub mod codec_wrapper;
 pub mod elgamal;
 pub mod proofs;
