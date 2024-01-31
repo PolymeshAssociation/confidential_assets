@@ -51,7 +51,7 @@ fn bench_transaction_sender_proof_stage(
         })
         .collect();
 
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for proof_gen in &proof_gens {
         group.bench_with_input(
             BenchmarkId::new(
@@ -97,7 +97,7 @@ fn bench_transaction_sender(
 ) -> Vec<(Balance, CipherText, ConfidentialTransferProof)> {
     let mut rng = thread_rng();
 
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, sender_balance) in &sender_balances {
         group.bench_with_input(
             BenchmarkId::new("Sender", *amount),
@@ -153,7 +153,7 @@ fn bench_transaction_validator(
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
     let mut rng = thread_rng();
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, sender_balance, tx) in transactions {
         group.bench_with_input(
             BenchmarkId::new("Validator", amount),
@@ -180,7 +180,7 @@ fn bench_transaction_receiver(
     receiver_account: ElgamalKeys,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, _, tx) in transactions {
         tx.receiver_verify(receiver_account.clone(), Some(*amount))
             .expect("Receiver verify");
@@ -205,7 +205,7 @@ fn bench_transaction_auditor(
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
     with_amount: bool,
 ) {
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, _sender_balance, init_tx) in transactions {
         let (label, amount) = if with_amount {
             (format!("{:?} tx amount ({:?})", id, amount), Some(*amount))
@@ -301,7 +301,7 @@ fn bench_transaction(c: &mut Criterion) {
 }
 
 criterion_group! {
-    name = mercat_transaction;
+    name = confidential_transaction;
     // Lower the sample size to run faster; larger shuffle sizes are
     // long so we're not microbenchmarking anyways.
     // 10 is the minimum allowed sample size in Criterion.
@@ -311,4 +311,4 @@ criterion_group! {
     targets = bench_transaction,
 }
 
-criterion_main!(mercat_transaction);
+criterion_main!(confidential_transaction);

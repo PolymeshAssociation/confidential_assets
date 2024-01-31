@@ -8,6 +8,7 @@ license-file = "LICENSE.txt"
 
 [patch.crates-io]
 bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "polymesh" }
+curve25519-dalek-ng = { git = "https://github.com/atouchet/curve25519-dalek-ng.git", branch = "simd" }
 
 [dependencies]
 # SCALE
@@ -80,6 +81,10 @@ std = [
 
 [[bench]]
 name = "elgamal_decryption"
+harness = false
+
+[[bench]]
+name = "range_proofs"
 harness = false
 
 [[bench]]
