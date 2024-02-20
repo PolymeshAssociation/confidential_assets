@@ -143,6 +143,16 @@ impl ConfidentialBurnProof {
             &mut self.encoded_inner_proof.as_slice(),
         )?)
     }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.encoded_inner_proof.clone()
+    }
+
+    pub fn from_bytes(proof: &Vec<u8>) -> Result<Self> {
+        Ok(Self {
+            encoded_inner_proof: proof.clone(),
+        })
+    }
 }
 
 /// Holds the zk-proofs of the confidential burn transaction.
