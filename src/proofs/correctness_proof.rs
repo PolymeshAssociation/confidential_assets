@@ -19,12 +19,12 @@ use rand_core::{CryptoRng, RngCore};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use codec::{Decode, Encode};
-use sp_std::convert::From;
+use core::convert::From;
 
 /// The domain label for the correctness proof.
-pub const CORRECTNESS_PROOF_FINAL_RESPONSE_LABEL: &[u8] = b"PolymeshCorrectnessFinalResponse";
+pub const CORRECTNESS_PROOF_LABEL: &[u8] = b"PolymeshCorrectnessProof";
 /// The domain label for the challenge.
-pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessChallenge";
+pub const CORRECTNESS_PROOF_CHALLENGE_LABEL: &[u8] = b"PolymeshCorrectnessFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Proof of Correct Encryption of the Given Value
@@ -56,12 +56,17 @@ impl Default for CorrectnessInitialMessage {
 }
 
 impl UpdateTranscript for CorrectnessInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CORRECTNESS_PROOF_CHALLENGE_LABEL);
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
-        Ok(())
+        transcript.scalar_challenge(CORRECTNESS_PROOF_CHALLENGE_LABEL)
     }
+}
+
+fn start_transcript(transcript: &mut Transcript, pub_key: &ElgamalPublicKey) -> Result<()> {
+    transcript.append_domain_separator(CORRECTNESS_PROOF_LABEL);
+    transcript.append_validated_point(b"PK", &pub_key.pub_key.compress())?;
+    Ok(())
 }
 
 /// Holds the non-interactive proofs of correctness, equivalent of L_correct of MERCAT paper.
@@ -91,6 +96,10 @@ impl<'a> ProofProverAwaitingChallenge for CorrectnessProverAwaitingChallenge<'a>
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
     type ZKProver = CorrectnessProver;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn create_transcript_rng<T: RngCore + CryptoRng>(
         &self,
@@ -142,6 +151,10 @@ pub struct CorrectnessVerifier<'a> {
 impl<'a> ProofVerifier for CorrectnessVerifier<'a> {
     type ZKInitialMessage = CorrectnessInitialMessage;
     type ZKFinalResponse = CorrectnessFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        start_transcript(transcript, &self.pub_key)
+    }
 
     fn verify(
         &self,
@@ -203,15 +216,12 @@ mod tests {
             cipher,
             pc_gens: &gens,
         };
-        let mut transcript = Transcript::new(CORRECTNESS_PROOF_FINAL_RESPONSE_LABEL);
+        let mut transcript = Transcript::new(CORRECTNESS_PROOF_LABEL);
 
         // Positive tests
         let mut transcript_rng = prover.create_transcript_rng(&mut rng, &transcript);
         let (prover, initial_message) = prover.generate_initial_message(&mut transcript_rng);
-        initial_message.update_transcript(&mut transcript).unwrap();
-        let challenge = transcript
-            .scalar_challenge(CORRECTNESS_PROOF_CHALLENGE_LABEL)
-            .unwrap();
+        let challenge = initial_message.update_transcript(&mut transcript).unwrap();
         let final_response = prover.apply_challenge(&challenge);
 
         let result = verifier.verify(&challenge, &initial_message, &final_response);

@@ -6,26 +6,19 @@ use merlin::Transcript;
 use confidential_assets::{
     elgamal::CommitmentWitness,
     errors::Error,
-    proofs::{
-        ciphertext_refreshment_proof::*,
-        encryption_proofs::*,
-        transcript::{TranscriptProtocol, UpdateTranscript},
-    },
+    proofs::{ciphertext_refreshment_proof::*, encryption_proofs::*, transcript::UpdateTranscript},
     testing::{self, TestSenderProofGen},
     transaction::MAX_AUDITORS,
     ElgamalKeys, ElgamalPublicKey, Scalar,
 };
 use rand::thread_rng;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[test]
 pub fn bad_public_key() {
     let mut rng = thread_rng();
     let auditors = testing::generate_auditors(MAX_AUDITORS as usize, &mut rng);
-    let auditor_keys: BTreeMap<_, _> = auditors
-        .iter()
-        .map(|(id, keys)| (*id, keys.public))
-        .collect();
+    let auditor_keys: BTreeSet<_> = auditors.iter().map(|keys| keys.public).collect();
     // Create sender account with a balance.
     let (sender_account, sender_init_balance) =
         testing::create_account_with_amount(&mut rng, 1_000);
@@ -45,9 +38,8 @@ pub fn bad_public_key() {
         a: a.into(),
         b: b.into(),
     };
-    initial_message.update_transcript(&mut transcript).unwrap();
-    let c = transcript
-        .scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+    let c = initial_message
+        .update_transcript(&mut transcript)
         .unwrap()
         .x()
         .clone();
@@ -103,8 +95,9 @@ pub fn bad_public_key() {
     let z = *final_response.0;
     let a = initial_message.a.decompress();
     let b = initial_message.b.decompress();
-    let x = *sender_init_balance.x - *tx.refreshed_enc_balance.x;
-    let y = *sender_init_balance.y - *tx.refreshed_enc_balance.y;
+    let inner = tx.inner_proof().expect("Ok");
+    let x = *sender_init_balance.x - *inner.refreshed_enc_balance.x;
+    let y = *sender_init_balance.y - *inner.refreshed_enc_balance.y;
     // This check fails like it should.
     assert!(z * y != a + c * x);
     // ATTACK: causes this to pass.
@@ -119,6 +112,6 @@ pub fn bad_public_key() {
     eprintln!("verify sender proof: {res:?}");
     assert_eq!(
         res,
-        Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 1 })
+        Err(Error::CiphertextSameValueFinalResponseVerificationError { check: 0 })
     );
 }

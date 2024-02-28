@@ -8,10 +8,10 @@ license-file = "LICENSE.txt"
 
 [patch.crates-io]
 bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "polymesh" }
+curve25519-dalek-ng = { git = "https://github.com/atouchet/curve25519-dalek-ng.git", branch = "simd" }
 
 [dependencies]
-# Substrate
-sp-std = { version = "5.0.0", default-features = false, git = "https://github.com/PolymeshAssociation/substrate", branch = "polymesh-v6-monthly-2023-03" }
+# SCALE
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.0", default-features = false, features = ["derive"] }
 
@@ -20,9 +20,12 @@ serde = { version = "1.0.105", default-features = false, features = ["derive"], 
 zeroize = { version = "1.1", default-features = false }
 byteorder = { version = "^1.2.3", default-features = false, features = ["i128"] }
 thiserror = "1.0.44"
+log = "0.4"
+
+uuid = { version = "1.6", default-features = false }
 
 # Crypto
-sha3 = { version = "0.9", default-features = false }
+sha3 = { version = "0.9", default-features = false, optional = true }
 
 rand_core = { version = "0.6", default-features = false}
 rand = { version = "0.8", default-features = false }
@@ -38,6 +41,9 @@ itertools = { version = "0.10.5", optional = true }
 lazy_static = { version = "1.4.0", optional = true }
 
 [dev-dependencies]
+# Crypto
+sha3 = { version = "0.9", default-features = false }
+
 wasm-bindgen-test = { version = "0.3.10"}
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 criterion = { version = "0.3" }
@@ -70,11 +76,15 @@ std = [
  "bulletproofs/std",
  # Other
  "codec/std",
- "sp-std/std",
+ "uuid/std",
 ]
 
 [[bench]]
 name = "elgamal_decryption"
+harness = false
+
+[[bench]]
+name = "range_proofs"
 harness = false
 
 [[bench]]

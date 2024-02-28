@@ -31,7 +31,6 @@ use rand_core::{CryptoRng, RngCore};
 
 use codec::{Decode, Encode};
 use sha3::{digest::FixedOutput, Digest, Sha3_256};
-use sp_std::prelude::*;
 
 use crate::{
     codec_wrapper::WrappedCompressedRistretto,

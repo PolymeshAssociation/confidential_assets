@@ -28,11 +28,10 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use codec::{Decode, Encode};
 
 /// The domain label for the ciphertext refreshment proof.
-pub const CIPHERTEXT_REFRESHMENT_FINAL_RESPONSE_LABEL: &[u8] =
-    b"PolymeshCipherTextRefreshmentFinalResponse";
+pub const CIPHERTEXT_REFRESHMENT_PROOF_LABEL: &[u8] = b"PolymeshCipherTextRefreshmentProof";
 /// The domain label for the challenge.
 pub const CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL: &[u8] =
-    b"PolymeshCipherTextRefreshmentChallenge";
+    b"PolymeshCipherTextRefreshmentFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Proof of two ciphertext encrypting the same value under the same
@@ -59,10 +58,44 @@ impl Default for CipherTextRefreshmentInitialMessage {
 }
 
 impl UpdateTranscript for CipherTextRefreshmentInitialMessage {
-    fn update_transcript(&self, transcript: &mut Transcript) -> Result<()> {
-        transcript.append_domain_separator(CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL);
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
         transcript.append_validated_point(b"A", &self.a.compress())?;
         transcript.append_validated_point(b"B", &self.b.compress())?;
+        transcript.scalar_challenge(CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL)
+    }
+}
+
+pub struct CipherTextRefreshmentInputs {
+    /// The public key to which the `value` is encrypted.
+    pub pub_key: ElgamalPublicKey,
+
+    /// The difference between the X part of the two ciphertexts:
+    /// X = ciphertext1.x - ciphertext2.x
+    pub x: RistrettoPoint,
+
+    /// The difference between the Y part of the two ciphertexts:
+    /// Y = ciphertext1.y - ciphertext2.y
+    pub y: RistrettoPoint,
+}
+
+impl CipherTextRefreshmentInputs {
+    pub fn new(
+        pub_key: ElgamalPublicKey,
+        ciphertext1: CipherText,
+        ciphertext2: CipherText,
+    ) -> Self {
+        Self {
+            pub_key,
+            x: *ciphertext1.x - *ciphertext2.x,
+            y: *ciphertext1.y - *ciphertext2.y,
+        }
+    }
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(CIPHERTEXT_REFRESHMENT_PROOF_LABEL);
+        transcript.append_validated_point(b"PK", &self.pub_key.pub_key.compress())?;
+        transcript.append_validated_point(b"X", &self.x.compress())?;
+        transcript.append_validated_point(b"Y", &self.y.compress())?;
         Ok(())
     }
 }
@@ -76,22 +109,21 @@ pub struct CipherTextRefreshmentProverAwaitingChallenge<'a> {
     /// The public key used for the elgamal encryption.
     secret_key: ElgamalSecretKey,
 
-    /// The difference between the Y part of the two ciphertexts:
-    /// Y = ciphertext1.y - ciphertext2.y
-    y: RistrettoPoint,
+    inputs: CipherTextRefreshmentInputs,
     pc_gens: &'a PedersenGens,
 }
 
 impl<'a> CipherTextRefreshmentProverAwaitingChallenge<'a> {
     pub fn new(
         secret_key: ElgamalSecretKey,
+        pub_key: ElgamalPublicKey,
         ciphertext1: CipherText,
         ciphertext2: CipherText,
         gens: &'a PedersenGens,
     ) -> Self {
-        CipherTextRefreshmentProverAwaitingChallenge {
+        Self {
             secret_key,
-            y: *ciphertext1.y - *ciphertext2.y,
+            inputs: CipherTextRefreshmentInputs::new(pub_key, ciphertext1, ciphertext2),
             pc_gens: gens,
         }
     }
@@ -111,6 +143,10 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
     type ZKFinalResponse = CipherTextRefreshmentFinalResponse;
     type ZKProver = CipherTextRefreshmentProver;
 
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        self.inputs.start_transcript(transcript)
+    }
+
     fn create_transcript_rng<T: RngCore + CryptoRng>(
         &self,
         rng: &mut T,
@@ -118,7 +154,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
     ) -> TranscriptRng {
         transcript
             .build_rng()
-            .rekey_with_witness_bytes(b"y", self.y.compress().as_bytes())
+            .rekey_with_witness_bytes(b"y", self.inputs.y.compress().as_bytes())
             .finalize(rng)
     }
 
@@ -129,7 +165,7 @@ impl<'a> ProofProverAwaitingChallenge for CipherTextRefreshmentProverAwaitingCha
         let rand_commitment = Scalar::random(rng);
 
         let initial_message = CipherTextRefreshmentInitialMessage {
-            a: (rand_commitment * self.y).into(),
+            a: (rand_commitment * self.inputs.y).into(),
             b: (rand_commitment * self.pc_gens.B_blinding).into(),
         };
 
@@ -148,16 +184,7 @@ impl ProofProver<CipherTextRefreshmentFinalResponse> for CipherTextRefreshmentPr
 }
 
 pub struct CipherTextRefreshmentVerifier<'a> {
-    /// The public key to which the `value` is encrypted.
-    pub pub_key: ElgamalPublicKey,
-
-    /// The difference between the X part of the two ciphertexts:
-    /// X = ciphertext1.x - ciphertext2.x
-    pub x: RistrettoPoint,
-
-    /// The difference between the Y part of the two ciphertexts:
-    /// Y = ciphertext1.y - ciphertext2.y
-    pub y: RistrettoPoint,
+    pub inputs: CipherTextRefreshmentInputs,
     pub pc_gens: &'a PedersenGens,
 }
 
@@ -168,10 +195,8 @@ impl<'a> CipherTextRefreshmentVerifier<'a> {
         ciphertext2: CipherText,
         gens: &'a PedersenGens,
     ) -> Self {
-        CipherTextRefreshmentVerifier {
-            pub_key,
-            x: *ciphertext1.x - *ciphertext2.x,
-            y: *ciphertext1.y - *ciphertext2.y,
+        Self {
+            inputs: CipherTextRefreshmentInputs::new(pub_key, ciphertext1, ciphertext2),
             pc_gens: gens,
         }
     }
@@ -180,6 +205,10 @@ impl<'a> CipherTextRefreshmentVerifier<'a> {
 impl<'a> ProofVerifier for CipherTextRefreshmentVerifier<'a> {
     type ZKInitialMessage = CipherTextRefreshmentInitialMessage;
     type ZKFinalResponse = CipherTextRefreshmentFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        self.inputs.start_transcript(transcript)
+    }
 
     fn verify(
         &self,
@@ -191,11 +220,11 @@ impl<'a> ProofVerifier for CipherTextRefreshmentVerifier<'a> {
         let a = initial_message.a.decompress();
         let b = initial_message.b.decompress();
         ensure!(
-            z * self.y == a + challenge.x() * self.x,
+            z * self.inputs.y == a + challenge.x() * self.inputs.x,
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 1 }
         );
         ensure!(
-            z * self.pc_gens.B_blinding == b + challenge.x() * *self.pub_key.pub_key,
+            z * self.pc_gens.B_blinding == b + challenge.x() * *self.inputs.pub_key.pub_key,
             Error::CiphertextRefreshmentFinalResponseVerificationError { check: 2 }
         );
         Ok(())
@@ -231,20 +260,18 @@ mod tests {
 
         let prover = CipherTextRefreshmentProverAwaitingChallenge::new(
             elg_secret,
+            elg_pub.clone(),
             ciphertext1,
             ciphertext2,
             &gens,
         );
         let verifier = CipherTextRefreshmentVerifier::new(elg_pub, ciphertext1, ciphertext2, &gens);
-        let mut transcript = Transcript::new(CIPHERTEXT_REFRESHMENT_FINAL_RESPONSE_LABEL);
+        let mut transcript = Transcript::new(CIPHERTEXT_REFRESHMENT_PROOF_LABEL);
 
         // Positive tests
         let mut transcript_rng = prover.create_transcript_rng(&mut rng, &transcript);
         let (prover, initial_message) = prover.generate_initial_message(&mut transcript_rng);
-        initial_message.update_transcript(&mut transcript).unwrap();
-        let challenge = transcript
-            .scalar_challenge(CIPHERTEXT_REFRESHMENT_PROOF_CHALLENGE_LABEL)
-            .unwrap();
+        let challenge = initial_message.update_transcript(&mut transcript).unwrap();
         let final_response = prover.apply_challenge(&challenge);
 
         let result = verifier.verify(&challenge, &initial_message, &final_response);
@@ -278,7 +305,11 @@ mod tests {
         let new_cipher = cipher.refresh(&elg_secret, new_rand_blind).unwrap();
 
         let prover = CipherTextRefreshmentProverAwaitingChallenge::new(
-            elg_secret, cipher, new_cipher, &gens,
+            elg_secret,
+            elg_pub.clone(),
+            cipher,
+            new_cipher,
+            &gens,
         );
         let verifier = CipherTextRefreshmentVerifier::new(elg_pub, cipher, new_cipher, &gens);
 
@@ -300,6 +331,7 @@ mod tests {
 
         let prover = CipherTextRefreshmentProverAwaitingChallenge::new(
             elg_secret,
+            elg_pub.clone(),
             ciphertext1,
             ciphertext2,
             &gens,

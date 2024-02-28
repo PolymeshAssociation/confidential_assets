@@ -1,9 +1,13 @@
+#[cfg(not(feature = "std"))]
+use alloc::{self as std, vec::Vec};
+use codec::Encode;
+use merlin::Transcript;
 use rand_core::{CryptoRng, RngCore};
-use std::collections::BTreeMap;
+use std::collections::btree_set::BTreeSet;
 
 use crate::{
     elgamal::multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-    elgamal::{CipherText, CipherTextHint, CommitmentWitness},
+    elgamal::{CipherText, CommitmentWitness},
     errors::Result,
     proofs::{
         bulletproofs::PedersenGens,
@@ -13,10 +17,13 @@ use crate::{
         ciphertext_same_value_proof::{
             CipherTextSameValueProof, CipherTextSameValueProverAwaitingChallenge,
         },
-        encryption_proofs::single_property_prover,
+        encryption_proofs::single_property_prover_with_transcript,
         range_proof::InRangeProof,
     },
-    transaction::{Auditor, AuditorId, Auditors, ConfidentialTransferProof},
+    transaction::{
+        ConfidentialTransferInnerProof, ConfidentialTransferProof,
+        CONFIDENTIAL_TRANSFER_PROOF_LABEL,
+    },
     Balance, ElgamalKeys, ElgamalPublicKey, ElgamalSecretKey, Scalar, BALANCE_RANGE,
 };
 
@@ -29,10 +36,11 @@ pub struct TestSenderProofGen {
     pub sender_init_balance: CipherText,
     pub sender_balance: Balance,
     pub receiver_pub: ElgamalPublicKey,
-    pub auditor_keys: BTreeMap<AuditorId, ElgamalPublicKey>,
+    pub auditor_keys: BTreeSet<ElgamalPublicKey>,
     pub keys: Vec<ElgamalPublicKey>,
     pub amount: Balance,
     // Temps.
+    pub transcript: Transcript,
     pub last_stage: u32,
     pub witness: CommitmentWitness,
     pub gens: PedersenGens,
@@ -43,7 +51,6 @@ pub struct TestSenderProofGen {
     pub range_proofs: Option<InRangeProof>,
     pub refreshed_enc_balance: Option<CipherText>,
     pub balance_refreshed_same_proof: Option<CipherEqualSamePubKeyProof>,
-    pub auditors: Auditors,
 }
 
 impl TestSenderProofGen {
@@ -52,7 +59,7 @@ impl TestSenderProofGen {
         sender_init_balance: &CipherText,
         sender_balance: Balance,
         receiver_pub_account: &ElgamalPublicKey,
-        auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+        auditor_keys: &BTreeSet<ElgamalPublicKey>,
         amount: Balance,
         rng: &mut T,
     ) -> Self {
@@ -74,6 +81,7 @@ impl TestSenderProofGen {
             amount,
 
             // Temps.
+            transcript: Transcript::new(CONFIDENTIAL_TRANSFER_PROOF_LABEL),
             last_stage: 0,
             witness: CommitmentWitness::new(amount.into(), Scalar::random(rng)),
             gens: PedersenGens::default(),
@@ -85,7 +93,6 @@ impl TestSenderProofGen {
             range_proofs: None,
             refreshed_enc_balance: None,
             balance_refreshed_same_proof: None,
-            auditors: Default::default(),
         }
     }
 
@@ -95,13 +102,15 @@ impl TestSenderProofGen {
     ) -> Result<ConfidentialTransferProof> {
         self.run_to_stage(u32::MAX, rng)?;
 
-        Ok(ConfidentialTransferProof {
-            amounts: self.amounts.unwrap(),
+        let inner = ConfidentialTransferInnerProof {
             amount_equal_cipher_proof: self.amount_equal_cipher_proof.unwrap(),
             range_proofs: self.range_proofs.unwrap(),
             balance_refreshed_same_proof: self.balance_refreshed_same_proof.unwrap(),
             refreshed_enc_balance: self.refreshed_enc_balance.unwrap(),
-            auditors: self.auditors,
+        };
+        Ok(ConfidentialTransferProof {
+            amounts: self.amounts.unwrap(),
+            encoded_inner_proof: inner.encode(),
         })
     }
 
@@ -130,12 +139,15 @@ impl TestSenderProofGen {
                     Some(CipherTextMultiKeyBuilder::new(&self.witness, self.keys.iter()).build());
             }
             2 => {
-                self.amount_equal_cipher_proof = Some(single_property_prover(
-                    CipherTextSameValueProverAwaitingChallenge {
-                        keys: self.keys.clone(),
-                        w: self.witness.clone(),
-                        pc_gens: &self.gens,
-                    },
+                let ciphertexts = self.amounts.as_ref().map(|a| a.ciphertexts()).unwrap();
+                self.amount_equal_cipher_proof = Some(single_property_prover_with_transcript(
+                    &mut self.transcript,
+                    CipherTextSameValueProverAwaitingChallenge::new(
+                        self.keys.clone(),
+                        ciphertexts,
+                        self.witness.clone(),
+                        &self.gens,
+                    ),
                     rng,
                 )?);
             }
@@ -150,9 +162,11 @@ impl TestSenderProofGen {
             }
             4 => {
                 let refreshed_enc_balance = self.refreshed_enc_balance.unwrap();
-                self.balance_refreshed_same_proof = Some(single_property_prover(
+                self.balance_refreshed_same_proof = Some(single_property_prover_with_transcript(
+                    &mut self.transcript,
                     CipherTextRefreshmentProverAwaitingChallenge::new(
                         self.sender_sec.clone(),
+                        self.sender_pub.clone(),
                         self.sender_init_balance,
                         refreshed_enc_balance,
                         &self.gens,
@@ -167,6 +181,8 @@ impl TestSenderProofGen {
                 let updated_balance_blinding =
                     self.balance_refresh_enc_blinding - amount_enc_blinding;
                 self.range_proofs = Some(InRangeProof::prove_multiple(
+                    &self.gens,
+                    &mut self.transcript,
                     &[
                         self.amount.into(),
                         (self.sender_balance - self.amount).into(),
@@ -175,23 +191,6 @@ impl TestSenderProofGen {
                     BALANCE_RANGE,
                     rng,
                 )?);
-            }
-            6 => {
-                // Add the necessary payload for auditors.
-                self.auditors = self
-                    .auditor_keys
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (auditor_id, _auditor_enc_pub_key))| {
-                        (
-                            *auditor_id,
-                            Auditor {
-                                amount_idx: (idx + 2) as u8,
-                                encrypted_hint: CipherTextHint::new(&self.witness, rng),
-                            },
-                        )
-                    })
-                    .collect();
             }
             _ => {
                 self.last_stage = u32::MAX;
@@ -214,20 +213,17 @@ pub fn issue_assets<R: RngCore + CryptoRng>(
     init_balance + encrypted_amount
 }
 
-pub fn generate_auditors<R: RngCore + CryptoRng>(
-    count: usize,
-    rng: &mut R,
-) -> BTreeMap<AuditorId, ElgamalKeys> {
+pub fn generate_auditors<R: RngCore + CryptoRng>(count: usize, rng: &mut R) -> Vec<ElgamalKeys> {
     (0..count)
         .into_iter()
-        .map(|n| {
+        .map(|_n| {
             let secret_key = ElgamalSecretKey::new(Scalar::random(rng));
             let keys = ElgamalKeys {
                 public: secret_key.get_public_key(),
                 secret: secret_key,
             };
 
-            (AuditorId(n as u32), keys)
+            keys
         })
         .collect()
 }

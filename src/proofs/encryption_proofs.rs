@@ -1,18 +1,18 @@
 //! Encryption proofs' interface definitions and
 //! Non-Interactive Zero Knowledge Proof API.
 
+use core::convert::TryFrom;
 use curve25519_dalek::scalar::Scalar;
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
-use sp_std::convert::TryFrom;
 
 use crate::errors::{Error, Result};
 use crate::proofs::transcript::{TranscriptProtocol, UpdateTranscript};
 
 /// The domain label for the encryption proofs.
-pub const ENCRYPTION_PROOFS_LABEL: &[u8] = b"PolymeshEncryptionProofs";
+pub const ENCRYPTION_PROOFS_LABEL: &[u8] = b"PolymeshEncryptionProof";
 /// The domain label for the challenge.
-pub const ENCRYPTION_PROOFS_CHALLENGE_LABEL: &[u8] = b"PolymeshEncryptionProofsChallenge";
+pub const ENCRYPTION_PROOFS_CHALLENGE_LABEL: &[u8] = b"PolymeshEncryptionFinalResponseChallenge";
 
 // ------------------------------------------------------------------------
 // Sigma Protocol's Prover and Verifier Interfaces
@@ -49,6 +49,11 @@ pub trait ProofProverAwaitingChallenge {
     type ZKFinalResponse;
     type ZKProver: ProofProver<Self::ZKFinalResponse>;
 
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        Ok(())
+    }
+
     /// Create an RNG from current transcript's state and an RNG.
     /// This new RNG will be used by the prover to generate randomness
     /// in the first round of the Sigma protocol.
@@ -73,7 +78,6 @@ pub trait ProofProverAwaitingChallenge {
     /// First round of the Sigma protocol. Prover generates an initial message.
     ///
     /// # Inputs
-    /// `pc_gens` The Pedersen Generators used for the Elgamal encryption.
     /// `rng`     An RNG created by calling `create_transcript_rng()`.
     ///
     /// # Output
@@ -99,6 +103,11 @@ pub trait ProofProver<ZKFinalResponse> {
 pub trait ProofVerifier {
     type ZKInitialMessage: UpdateTranscript;
     type ZKFinalResponse;
+
+    fn start_transcript(&self, transcript: &mut Transcript) -> Result<()> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        Ok(())
+    }
 
     /// Forth round of the Sigma protocol. Verifier receives the initial message
     /// and the final response, and verifies them.
@@ -149,13 +158,30 @@ pub fn single_property_prover<
     >,
 > {
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
+    single_property_prover_with_transcript(&mut transcript, prover_ac, rng)
+}
+
+pub fn single_property_prover_with_transcript<
+    T: RngCore + CryptoRng,
+    ProverAwaitingChallenge: ProofProverAwaitingChallenge,
+>(
+    transcript: &mut Transcript,
+    prover_ac: ProverAwaitingChallenge,
+    rng: &mut T,
+) -> Result<
+    ZKProofResponse<
+        ProverAwaitingChallenge::ZKInitialMessage,
+        ProverAwaitingChallenge::ZKFinalResponse,
+    >,
+> {
+    // Start the transcript.
+    prover_ac.start_transcript(transcript)?;
 
     let mut transcript_rng = prover_ac.create_transcript_rng(rng, &transcript);
     let (prover, initial_message) = prover_ac.generate_initial_message(&mut transcript_rng);
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(&mut transcript)?;
-    let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)?;
+    let challenge = initial_message.update_transcript(transcript)?;
 
     let final_response = prover.apply_challenge(&challenge);
 
@@ -175,13 +201,23 @@ pub fn single_property_verifier<Verifier: ProofVerifier>(
     verifier: &Verifier,
     proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
 ) -> Result<()> {
+    let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
+    single_property_verifier_with_transcript(&mut transcript, verifier, proof)
+}
+
+pub fn single_property_verifier_with_transcript<Verifier: ProofVerifier>(
+    transcript: &mut Transcript,
+    verifier: &Verifier,
+    proof: &ZKProofResponse<Verifier::ZKInitialMessage, Verifier::ZKFinalResponse>,
+) -> Result<()> {
+    // Start the transcript.
+    verifier.start_transcript(transcript)?;
+
     let initial_message = &proof.0;
     let final_response = &proof.1;
-    let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
     // Update the transcript with Prover's initial message
-    initial_message.update_transcript(&mut transcript)?;
-    let challenge = transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)?;
+    let challenge = initial_message.update_transcript(transcript)?;
 
     verifier.verify(&challenge, initial_message, final_response)?;
 
@@ -208,8 +244,8 @@ mod tests {
         },
     };
     use bulletproofs::PedersenGens;
+    use core::convert::TryFrom;
     use rand::{rngs::StdRng, SeedableRng};
-    use sp_std::convert::TryFrom;
     use wasm_bindgen_test::*;
 
     const SEED_1: [u8; 32] = [42u8; 32];
@@ -324,26 +360,22 @@ mod tests {
 
         // Provers generate the initial messages
         let (prover0, initial_message0) = prover0.generate_initial_message(&mut transcript_rng1);
-        initial_message0.update_transcript(&mut transcript).unwrap();
-
         let (prover1, initial_message1) = prover1.generate_initial_message(&mut transcript_rng2);
-        initial_message1.update_transcript(&mut transcript).unwrap();
 
         // Dealer calculates the challenge from the 2 initial messages
-        let challenge = transcript
-            .scalar_challenge(b"batch_proof_challenge_label")
-            .unwrap();
+        let challenge0 = initial_message0.update_transcript(&mut transcript).unwrap();
+        let challenge1 = initial_message1.update_transcript(&mut transcript).unwrap();
 
         // Provers generate the final responses
-        let final_response0 = prover0.apply_challenge(&challenge);
-        let final_response1 = prover1.apply_challenge(&challenge);
+        let final_response0 = prover0.apply_challenge(&challenge0);
+        let final_response1 = prover1.apply_challenge(&challenge1);
 
         // Positive tests
         // Verifiers verify the proofs
-        let result = verifier0.verify(&challenge, &initial_message0, &final_response0);
+        let result = verifier0.verify(&challenge0, &initial_message0, &final_response0);
         assert!(result.is_ok());
 
-        let result = verifier1.verify(&challenge, &initial_message1, &final_response1);
+        let result = verifier1.verify(&challenge1, &initial_message1, &final_response1);
         assert!(result.is_ok());
 
         // Negative tests

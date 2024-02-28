@@ -4,17 +4,17 @@ use codec::Encode;
 use confidential_assets::{
     elgamal::CipherText,
     testing::{self, TestSenderProofGen},
-    transaction::{AuditorId, ConfidentialTransferProof, MAX_AUDITORS},
+    transaction::{ConfidentialTransferProof, MAX_AUDITORS},
     Balance, ElgamalKeys, ElgamalPublicKey,
 };
 use rand::thread_rng;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 // The sender's initial balance. Will be in:
 // [10^MIN_SENDER_BALANCE_ORDER, 10^(MIN_SENDER_BALANCE_ORDER+1), ..., 10^MAX_SENDER_BALANCE_ORDER]
 // The transferred amout on each iteration will be all the balance the sender has: 10^SENDER_BALANCE_ORDER
-pub const MIN_SENDER_BALANCE_ORDER: u32 = 10;
-pub const MAX_SENDER_BALANCE_ORDER: u32 = 20;
+pub const MIN_SENDER_BALANCE_ORDER: u32 = 8;
+pub const MAX_SENDER_BALANCE_ORDER: u32 = 13;
 
 // The receiver's initial balance.
 const RECEIVER_INIT_BALANCE: Balance = 10000;
@@ -24,7 +24,7 @@ fn bench_transaction_sender_proof_stage(
     sender_account: ElgamalKeys,
     sender_balances: &[(Balance, CipherText)],
     rcvr_pub_account: ElgamalPublicKey,
-    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+    auditor_keys: &BTreeSet<ElgamalPublicKey>,
     bench_stage: u32,
 ) {
     let mut rng = thread_rng();
@@ -51,7 +51,7 @@ fn bench_transaction_sender_proof_stage(
         })
         .collect();
 
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for proof_gen in &proof_gens {
         group.bench_with_input(
             BenchmarkId::new(
@@ -93,11 +93,11 @@ fn bench_transaction_sender(
     sender_account: ElgamalKeys,
     sender_balances: Vec<(Balance, CipherText)>,
     rcvr_pub_account: ElgamalPublicKey,
-    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+    auditor_keys: &BTreeSet<ElgamalPublicKey>,
 ) -> Vec<(Balance, CipherText, ConfidentialTransferProof)> {
     let mut rng = thread_rng();
 
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, sender_balance) in &sender_balances {
         group.bench_with_input(
             BenchmarkId::new("Sender", *amount),
@@ -149,11 +149,11 @@ fn bench_transaction_validator(
     c: &mut Criterion,
     sender_account: ElgamalPublicKey,
     receiver_account: ElgamalPublicKey,
-    auditor_keys: &BTreeMap<AuditorId, ElgamalPublicKey>,
+    auditor_keys: &BTreeSet<ElgamalPublicKey>,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
     let mut rng = thread_rng();
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, sender_balance, tx) in transactions {
         group.bench_with_input(
             BenchmarkId::new("Validator", amount),
@@ -180,7 +180,7 @@ fn bench_transaction_receiver(
     receiver_account: ElgamalKeys,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
 ) {
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, _, tx) in transactions {
         tx.receiver_verify(receiver_account.clone(), Some(*amount))
             .expect("Receiver verify");
@@ -200,19 +200,24 @@ fn bench_transaction_receiver(
 
 fn bench_transaction_auditor(
     c: &mut Criterion,
-    id: AuditorId,
+    id: u8,
     keys: &ElgamalKeys,
     transactions: &[(Balance, CipherText, ConfidentialTransferProof)],
+    with_amount: bool,
 ) {
-    let mut group = c.benchmark_group("MERCAT Transaction");
+    let mut group = c.benchmark_group("Confidential Transaction");
     for (amount, _sender_balance, init_tx) in transactions {
-        let label = format!("{:?} initial_balance ({:?})", id.0, amount);
+        let (label, amount) = if with_amount {
+            (format!("{:?} tx amount ({:?})", id, amount), Some(*amount))
+        } else {
+            (format!("{:?} without tx amount ({:?})", id, amount), None)
+        };
         group.bench_with_input(
             BenchmarkId::new("Auditor", label),
             &init_tx,
             |b, init_tx| {
                 b.iter(|| {
-                    init_tx.auditor_verify(id, keys, None).unwrap();
+                    init_tx.auditor_verify(id, keys, amount).unwrap();
                 })
             },
         );
@@ -222,10 +227,8 @@ fn bench_transaction_auditor(
 fn bench_transaction(c: &mut Criterion) {
     let mut rng = thread_rng();
     let auditors = testing::generate_auditors(MAX_AUDITORS as usize, &mut rng);
-    let auditor_keys: BTreeMap<_, _> = auditors
-        .iter()
-        .map(|(id, keys)| (*id, keys.public))
-        .collect();
+    let auditor_keys: BTreeSet<_> = auditors.iter().map(|keys| keys.public).collect();
+    let auditors: BTreeMap<_, _> = auditors.into_iter().map(|a| (a.public, a)).collect();
     let (sender_account, sender_init_balance) = testing::create_account_with_amount(&mut rng, 0);
     let sender_pub_account = sender_account.public.clone();
 
@@ -291,14 +294,14 @@ fn bench_transaction(c: &mut Criterion) {
     // Receiver verify transaction amount.
     bench_transaction_receiver(c, receiver_account.clone(), transactions.as_slice());
 
-    // Mediator (AuditorId(0)) verify transaction amount.
-    let mediator_id = AuditorId(0);
-    let mediator = auditors.get(&mediator_id).unwrap();
-    bench_transaction_auditor(c, mediator_id, mediator, transactions.as_slice());
+    // Mediator verify transaction amount.
+    let (_, auditor) = auditors.first_key_value().unwrap();
+    bench_transaction_auditor(c, 0, auditor, transactions.as_slice(), true);
+    bench_transaction_auditor(c, 0, auditor, transactions.as_slice(), false);
 }
 
 criterion_group! {
-    name = mercat_transaction;
+    name = confidential_transaction;
     // Lower the sample size to run faster; larger shuffle sizes are
     // long so we're not microbenchmarking anyways.
     // 10 is the minimum allowed sample size in Criterion.
@@ -308,4 +311,4 @@ criterion_group! {
     targets = bench_transaction,
 }
 
-criterion_main!(mercat_transaction);
+criterion_main!(confidential_transaction);

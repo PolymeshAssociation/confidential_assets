@@ -7,14 +7,16 @@
 use crate::{
     elgamal::CommitmentWitness,
     errors::{Error, Result},
-    proofs::encryption_proofs::ZKPChallenge,
+    proofs::encryption_proofs::{
+        ZKPChallenge, ENCRYPTION_PROOFS_CHALLENGE_LABEL, ENCRYPTION_PROOFS_LABEL,
+    },
 };
 
 use curve25519_dalek::{ristretto::CompressedRistretto, scalar::Scalar};
 use merlin::{Transcript, TranscriptRng};
 use rand_core::{CryptoRng, RngCore};
 
-use sp_std::convert::TryInto;
+use core::convert::TryInto;
 
 pub trait TranscriptProtocol {
     /// If the inputted message is not trivial append it to the
@@ -102,8 +104,13 @@ impl TranscriptProtocol for Transcript {
 /// A trait that is used to update the transcript with the initial message
 /// that results from the first round of the protocol.
 pub trait UpdateTranscript {
-    fn update_transcript(&self, d: &mut Transcript) -> Result<()>;
+    fn update_transcript(&self, transcript: &mut Transcript) -> Result<ZKPChallenge> {
+        transcript.append_domain_separator(ENCRYPTION_PROOFS_LABEL);
+        transcript.scalar_challenge(ENCRYPTION_PROOFS_CHALLENGE_LABEL)
+    }
 }
+
+impl UpdateTranscript for () {}
 
 #[cfg(test)]
 mod tests {
