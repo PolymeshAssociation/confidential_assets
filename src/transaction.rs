@@ -376,7 +376,7 @@ impl ConfidentialTransferProof {
             auditor_idx,
             auditor_enc_key,
             expected_amount,
-            Balance::max_value(),
+            MAX_TOTAL_SUPPLY,
         )
     }
 
