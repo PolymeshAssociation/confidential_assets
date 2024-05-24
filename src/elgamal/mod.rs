@@ -94,6 +94,13 @@ impl CipherText {
     pub fn zero() -> Self {
         Default::default()
     }
+
+    pub fn compress(&self) -> CompressedCipherText {
+        CompressedCipherText {
+            x: self.x.compress().into(),
+            y: self.y.compress().into(),
+        }
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -137,6 +144,81 @@ impl<'b> SubAssign<&'b CipherText> for CipherText {
     }
 }
 define_sub_assign_variants!(LHS = CipherText, RHS = CipherText);
+
+/// Compressed `CipherText`.
+#[derive(Copy, Clone, Encode, Decode, Default, Debug, PartialEq, Eq)]
+pub struct CompressedCipherText {
+    pub x: WrappedCompressedRistretto,
+    pub y: WrappedCompressedRistretto,
+}
+
+impl TypeInfo for CompressedCipherText {
+    type Identity = Self;
+    fn type_info() -> Type {
+        Type::builder()
+            .path(Path::new("CompressedCipherText", module_path!()))
+            .composite(Fields::unnamed().field(|f| f.ty::<[u8; RISTRETTO_POINT_SIZE * 2]>()))
+    }
+}
+
+impl CompressedCipherText {
+    pub fn decompress(&self) -> Option<CipherText> {
+        Some(CipherText {
+            x: self.x.decompress().into(),
+            y: self.y.decompress().into(),
+        })
+    }
+}
+
+// ------------------------------------------------------------------------
+// Arithmetic operations on compressed ciphertext.
+// ------------------------------------------------------------------------
+
+impl<'a, 'b> Add<&'b CompressedCipherText> for &'a CompressedCipherText {
+    type Output = CompressedCipherText;
+
+    fn add(self, other: &'b CompressedCipherText) -> CompressedCipherText {
+        CompressedCipherText {
+            x: (self.x.decompress() + other.x.decompress()).into(),
+            y: (self.y.decompress() + other.y.decompress()).into(),
+        }
+    }
+}
+define_add_variants!(
+    LHS = CompressedCipherText,
+    RHS = CompressedCipherText,
+    Output = CompressedCipherText
+);
+
+impl<'b> AddAssign<&'b CompressedCipherText> for CompressedCipherText {
+    fn add_assign(&mut self, _rhs: &CompressedCipherText) {
+        *self = (self as &CompressedCipherText) + _rhs;
+    }
+}
+define_add_assign_variants!(LHS = CompressedCipherText, RHS = CompressedCipherText);
+
+impl<'a, 'b> Sub<&'b CompressedCipherText> for &'a CompressedCipherText {
+    type Output = CompressedCipherText;
+
+    fn sub(self, other: &'b CompressedCipherText) -> CompressedCipherText {
+        CompressedCipherText {
+            x: (self.x.decompress() - other.x.decompress()).into(),
+            y: (self.y.decompress() - other.y.decompress()).into(),
+        }
+    }
+}
+define_sub_variants!(
+    LHS = CompressedCipherText,
+    RHS = CompressedCipherText,
+    Output = CompressedCipherText
+);
+
+impl<'b> SubAssign<&'b CompressedCipherText> for CompressedCipherText {
+    fn sub_assign(&mut self, _rhs: &CompressedCipherText) {
+        *self = (self as &CompressedCipherText) - _rhs;
+    }
+}
+define_sub_assign_variants!(LHS = CompressedCipherText, RHS = CompressedCipherText);
 
 // ------------------------------------------------------------------------
 // Elgamal Encryption.

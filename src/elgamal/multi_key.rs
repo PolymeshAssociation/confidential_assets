@@ -2,7 +2,7 @@
 
 use crate::{
     codec_wrapper::WrappedCompressedRistretto,
-    elgamal::{CipherText, CommitmentWitness, ElgamalPublicKey},
+    elgamal::{CipherText, CommitmentWitness, CompressedCipherText, ElgamalPublicKey},
 };
 
 use bulletproofs::PedersenGens;
@@ -49,6 +49,13 @@ impl CipherTextMultiKey {
             x: x.decompress().into(),
             y: y.into(),
         })
+    }
+
+    /// Get one Compressed CipherText.
+    pub fn get_compressed(&self, idx: usize) -> Option<CompressedCipherText> {
+        self.x
+            .get(idx)
+            .map(|x| CompressedCipherText { x: *x, y: self.y })
     }
 
     /// Returns the number of keys used to encrypt the value.

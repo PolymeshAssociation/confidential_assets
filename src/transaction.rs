@@ -1,7 +1,7 @@
 use crate::{
     elgamal::{
         multi_key::{CipherTextMultiKey, CipherTextMultiKeyBuilder},
-        CipherText, CommitmentWitness, ElgamalPublicKey,
+        CipherText, CommitmentWitness, CompressedCipherText, ElgamalPublicKey,
     },
     errors::{Error, Result},
     proofs::{
@@ -422,6 +422,18 @@ impl ConfidentialTransferProof {
 
     pub fn receiver_amount(&self) -> CipherText {
         self.amount(1)
+    }
+
+    pub fn amount_compressed(&self, idx: usize) -> CompressedCipherText {
+        self.amounts.get_compressed(idx).unwrap_or_default()
+    }
+
+    pub fn sender_amount_compressed(&self) -> CompressedCipherText {
+        self.amount_compressed(0)
+    }
+
+    pub fn receiver_amount_compressed(&self) -> CompressedCipherText {
+        self.amount_compressed(1)
     }
 
     pub fn auditor_count(&self) -> Result<usize> {

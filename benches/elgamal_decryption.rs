@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
-use confidential_assets::{Balance, ElgamalSecretKey, Scalar};
+use codec::{Decode, Encode};
+use confidential_assets::{Balance, CipherText, ElgamalSecretKey, Scalar};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use rand::{rngs::StdRng, SeedableRng};
@@ -18,6 +19,93 @@ fn bench_elgamal(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("encrypt", value), &value, |b, &value| {
             b.iter(|| elg_pub.encrypt_value(value.into(), &mut rng))
         });
+    }
+
+    let init_value = (10 as Balance).pow(11);
+    let (_, enc_init_value) = elg_pub.encrypt_value(init_value.into(), &mut rng);
+    for i in 8..10 {
+        let value = (10 as Balance).pow(i);
+        let (_, enc_value) = elg_pub.encrypt_value(value.into(), &mut rng);
+        let enc_result = enc_init_value + enc_value;
+        group.bench_with_input(
+            BenchmarkId::new("add", value),
+            &enc_value,
+            |b, enc_value| {
+                b.iter(|| {
+                    let result = enc_init_value + enc_value;
+                    assert_eq!(enc_result, result);
+                })
+            },
+        );
+    }
+    for i in 8..10 {
+        let value = (10 as Balance).pow(i);
+        let (_, enc_value) = elg_pub.encrypt_value(value.into(), &mut rng);
+        let enc_result = enc_init_value - enc_value;
+        group.bench_with_input(
+            BenchmarkId::new("sub", value),
+            &enc_value,
+            |b, enc_value| {
+                b.iter(|| {
+                    let result = enc_init_value - enc_value;
+                    assert_eq!(enc_result, result);
+                })
+            },
+        );
+    }
+
+    // Decode + Elgamal add + Encode.
+    for i in 8..10 {
+        let value = (10 as Balance).pow(i);
+        let (_, enc_value) = elg_pub.encrypt_value(value.into(), &mut rng);
+        let enc_result = (enc_init_value + enc_value).encode();
+        let enc_value = enc_value.encode();
+        group.bench_with_input(
+            BenchmarkId::new("decode_add_encode", value),
+            &enc_value,
+            |b, enc_value| {
+                b.iter(|| {
+                    let enc_value = CipherText::decode(&mut &enc_value[..]).expect("CipherText");
+                    let result = (enc_init_value + enc_value).encode();
+                    assert_eq!(enc_result, result);
+                })
+            },
+        );
+    }
+    // Compressed Elgamal math
+    for i in 8..10 {
+        let value = (10 as Balance).pow(i);
+        let (_, enc_value) = elg_pub.encrypt_value(value.into(), &mut rng);
+        let enc_result = (enc_init_value + enc_value).compress();
+        let enc_init_value = enc_init_value.compress();
+        let enc_value = enc_value.compress();
+        group.bench_with_input(
+            BenchmarkId::new("compressed_add", value),
+            &enc_value,
+            |b, enc_value| {
+                b.iter(|| {
+                    let result = enc_init_value + enc_value;
+                    assert_eq!(enc_result, result);
+                })
+            },
+        );
+    }
+    for i in 8..10 {
+        let value = (10 as Balance).pow(i);
+        let (_, enc_value) = elg_pub.encrypt_value(value.into(), &mut rng);
+        let enc_result = (enc_init_value - enc_value).compress();
+        let enc_init_value = enc_init_value.compress();
+        let enc_value = enc_value.compress();
+        group.bench_with_input(
+            BenchmarkId::new("compressed_sub", value),
+            &enc_value,
+            |b, enc_value| {
+                b.iter(|| {
+                    let result = enc_init_value - enc_value;
+                    assert_eq!(enc_result, result);
+                })
+            },
+        );
     }
 
     #[cfg(not(feature = "discrete_log"))]
