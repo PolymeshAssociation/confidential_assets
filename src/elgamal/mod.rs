@@ -20,7 +20,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, Error as CodecError, Input, MaxEncodedLen};
+use codec::{Decode, Encode, Error as CodecError, Input, MaxEncodedLen, Output};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 
 use core::cmp::Ordering;
@@ -96,10 +96,7 @@ impl CipherText {
     }
 
     pub fn compress(&self) -> CompressedCipherText {
-        CompressedCipherText {
-            x: self.x.compress().into(),
-            y: self.y.compress().into(),
-        }
+        CompressedCipherText::from_points(self.x.compress(), self.y.compress())
     }
 }
 
@@ -146,41 +143,77 @@ impl<'b> SubAssign<&'b CipherText> for CipherText {
 define_sub_assign_variants!(LHS = CipherText, RHS = CipherText);
 
 /// Compressed `CipherText`.
-#[derive(Copy, Clone, Encode, Decode, Default, Debug, PartialEq, Eq)]
-pub struct CompressedCipherText {
-    pub x: WrappedCompressedRistretto,
-    pub y: WrappedCompressedRistretto,
+#[derive(Copy, Clone, TypeInfo, Debug, PartialEq, Eq)]
+pub struct CompressedCipherText([u8; RISTRETTO_POINT_SIZE * 2]);
+
+impl Encode for CompressedCipherText {
+    #[inline]
+    fn size_hint(&self) -> usize {
+        RISTRETTO_POINT_SIZE * 2
+    }
+
+    /// Encodes itself as an array of bytes.
+    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
+        self.0.encode_to(dest);
+    }
 }
 
-impl TypeInfo for CompressedCipherText {
-    type Identity = Self;
-    fn type_info() -> Type {
-        Type::builder()
-            .path(Path::new("CompressedCipherText", module_path!()))
-            .composite(Fields::unnamed().field(|f| f.ty::<[u8; RISTRETTO_POINT_SIZE * 2]>()))
+impl Decode for CompressedCipherText {
+    /// Decodes a `CompressedRistretto` from an array of bytes.
+    fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
+        let (x, y) = <(WrappedCompressedRistretto, WrappedCompressedRistretto)>::decode(input)?;
+        Ok(Self::from_points(*x, *y))
+    }
+}
+
+impl Default for CompressedCipherText {
+    fn default() -> Self {
+        Self([0u8; RISTRETTO_POINT_SIZE * 2])
+    }
+}
+
+impl From<CipherText> for CompressedCipherText {
+    fn from(other: CipherText) -> Self {
+        other.compress()
     }
 }
 
 impl CompressedCipherText {
+    pub fn from_points(x: CompressedRistretto, y: CompressedRistretto) -> Self {
+        let mut bytes = [0u8; RISTRETTO_POINT_SIZE * 2];
+        bytes[0..32].copy_from_slice(x.as_bytes());
+        bytes[32..64].copy_from_slice(y.as_bytes());
+        CompressedCipherText(bytes)
+    }
+
     pub fn from_slice(bytes: &[u8]) -> Self {
-        Self {
-            x: CompressedRistretto::from_slice(&bytes[0..32]).into(),
-            y: CompressedRistretto::from_slice(&bytes[32..64]).into(),
-        }
+        Self::from_points(
+            CompressedRistretto::from_slice(&bytes[0..32]),
+            CompressedRistretto::from_slice(&bytes[32..64]),
+        )
     }
 
     pub fn to_bytes(&self) -> [u8; RISTRETTO_POINT_SIZE * 2] {
-        let mut bytes = [0u8; RISTRETTO_POINT_SIZE * 2];
-        bytes[0..32].copy_from_slice(self.x.as_bytes());
-        bytes[32..64].copy_from_slice(self.y.as_bytes());
-        bytes
+        self.0
     }
 
-    pub fn decompress(&self) -> Option<CipherText> {
-        Some(CipherText {
-            x: self.x.decompress().into(),
-            y: self.y.decompress().into(),
-        })
+    pub fn as_bytes(&self) -> &[u8; RISTRETTO_POINT_SIZE * 2] {
+        &self.0
+    }
+
+    pub fn x(&self) -> WrappedCompressedRistretto {
+        CompressedRistretto::from_slice(&self.0[0..32]).into()
+    }
+
+    pub fn y(&self) -> WrappedCompressedRistretto {
+        CompressedRistretto::from_slice(&self.0[32..64]).into()
+    }
+
+    pub fn decompress(&self) -> CipherText {
+        CipherText {
+            x: self.x().decompress().into(),
+            y: self.y().decompress().into(),
+        }
     }
 }
 
@@ -192,10 +225,7 @@ impl<'a, 'b> Add<&'b CompressedCipherText> for &'a CompressedCipherText {
     type Output = CompressedCipherText;
 
     fn add(self, other: &'b CompressedCipherText) -> CompressedCipherText {
-        CompressedCipherText {
-            x: (self.x.decompress() + other.x.decompress()).into(),
-            y: (self.y.decompress() + other.y.decompress()).into(),
-        }
+        (self.decompress() + other.decompress()).into()
     }
 }
 define_add_variants!(
@@ -215,10 +245,7 @@ impl<'a, 'b> Sub<&'b CompressedCipherText> for &'a CompressedCipherText {
     type Output = CompressedCipherText;
 
     fn sub(self, other: &'b CompressedCipherText) -> CompressedCipherText {
-        CompressedCipherText {
-            x: (self.x.decompress() - other.x.decompress()).into(),
-            y: (self.y.decompress() - other.y.decompress()).into(),
-        }
+        (self.decompress() - other.decompress()).into()
     }
 }
 define_sub_variants!(

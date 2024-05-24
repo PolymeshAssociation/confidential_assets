@@ -55,7 +55,8 @@ impl CipherTextMultiKey {
     pub fn get_compressed(&self, idx: usize) -> Option<CompressedCipherText> {
         self.x
             .get(idx)
-            .map(|x| CompressedCipherText { x: *x, y: self.y })
+            .copied()
+            .map(|x| CompressedCipherText::from_points(*x, *self.y))
     }
 
     /// Returns the number of keys used to encrypt the value.
