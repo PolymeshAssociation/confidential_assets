@@ -162,6 +162,20 @@ impl TypeInfo for CompressedCipherText {
 }
 
 impl CompressedCipherText {
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        Self {
+            x: CompressedRistretto::from_slice(&bytes[0..32]).into(),
+            y: CompressedRistretto::from_slice(&bytes[32..64]).into(),
+        }
+    }
+
+    pub fn to_bytes(&self) -> [u8; RISTRETTO_POINT_SIZE * 2] {
+        let mut bytes = [0u8; RISTRETTO_POINT_SIZE * 2];
+        bytes[0..32].copy_from_slice(self.x.as_bytes());
+        bytes[32..64].copy_from_slice(self.y.as_bytes());
+        bytes
+    }
+
     pub fn decompress(&self) -> Option<CipherText> {
         Some(CipherText {
             x: self.x.decompress().into(),
