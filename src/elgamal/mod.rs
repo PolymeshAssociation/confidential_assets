@@ -20,7 +20,7 @@ use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use codec::{Decode, Encode, Error as CodecError, Input, MaxEncodedLen, Output};
+use codec::{Decode, Encode, Error as CodecError, Input, MaxEncodedLen};
 use scale_info::{build::Fields, Path, Type, TypeInfo};
 
 use core::cmp::Ordering;
@@ -143,20 +143,8 @@ impl<'b> SubAssign<&'b CipherText> for CipherText {
 define_sub_assign_variants!(LHS = CipherText, RHS = CipherText);
 
 /// Compressed `CipherText`.
-#[derive(Copy, Clone, TypeInfo, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, TypeInfo, Encode, Debug, PartialEq, Eq)]
 pub struct CompressedCipherText([u8; RISTRETTO_POINT_SIZE * 2]);
-
-impl Encode for CompressedCipherText {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        RISTRETTO_POINT_SIZE * 2
-    }
-
-    /// Encodes itself as an array of bytes.
-    fn encode_to<W: Output + ?Sized>(&self, dest: &mut W) {
-        self.0.encode_to(dest);
-    }
-}
 
 impl Decode for CompressedCipherText {
     /// Decodes a `CompressedRistretto` from an array of bytes.
