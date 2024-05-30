@@ -178,9 +178,12 @@ fn bench_batch_range_proofs(c: &mut Criterion) {
             enc_len += proof.encode().len();
             proofs.push(proof);
         }
-        eprintln!("batched singles encode size: batch={size}, enc_len={enc_len}");
+        eprintln!(
+            "batched singles encode size: batch={}, enc_len={enc_len}",
+            proofs.len()
+        );
         group.bench_with_input(
-            BenchmarkId::new("verify_single", size),
+            BenchmarkId::new("verify_single", proofs.len()),
             &proofs,
             |b, proofs| {
                 b.iter(|| {
@@ -214,11 +217,12 @@ fn bench_batch_range_proofs(c: &mut Criterion) {
         )
         .expect("Range proof");
         eprintln!(
-            "multiple encode size: batch={size}, enc_len={}",
+            "multiple encode size: batch={}, enc_len={}",
+            values.len(),
             proof.encode().len()
         );
         group.bench_with_input(
-            BenchmarkId::new("verify_multiple", size),
+            BenchmarkId::new("verify_multiple", values.len()),
             &proof,
             |b, proof| {
                 b.iter(|| {
