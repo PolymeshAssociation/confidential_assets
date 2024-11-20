@@ -173,7 +173,7 @@ impl Decode for WrappedScalar {
     fn decode<I: Input>(input: &mut I) -> Result<Self, CodecError> {
         let s = <[u8; SCALAR_SIZE]>::decode(input)?;
 
-        let inner = Scalar::from_canonical_bytes(s)
+        let inner = Option::from(Scalar::from_canonical_bytes(s))
             .ok_or_else(|| CodecError::from("Non-canonical `Scalar`."))?;
         Ok(Self(inner))
     }

@@ -33,7 +33,7 @@ impl TryFrom<Scalar> for ZKPChallenge {
     type Error = Error;
 
     fn try_from(x: Scalar) -> Result<Self, Self::Error> {
-        ensure!(x != Scalar::zero(), Error::VerificationError);
+        ensure!(x != Scalar::ZERO, Error::VerificationError);
         Ok(ZKPChallenge { x })
     }
 }
@@ -334,7 +334,7 @@ mod tests {
             Error::CorrectnessFinalResponseVerificationError { check: 1 }
         );
 
-        let bad_final_response = CorrectnessFinalResponse::from(Scalar::one());
+        let bad_final_response = CorrectnessFinalResponse::from(Scalar::ONE);
         assert_err!(
             single_property_verifier(&verifier0, &(initial_message0, bad_final_response)),
             Error::CorrectnessFinalResponseVerificationError { check: 1 }

@@ -176,8 +176,8 @@ impl CompressedCipherText {
 
     pub fn from_slice(bytes: &[u8]) -> Self {
         Self::from_points(
-            CompressedRistretto::from_slice(&bytes[0..32]),
-            CompressedRistretto::from_slice(&bytes[32..64]),
+            CompressedRistretto::from_slice(&bytes[0..32]).unwrap_or_default(),
+            CompressedRistretto::from_slice(&bytes[32..64]).unwrap_or_default(),
         )
     }
 
@@ -190,11 +190,11 @@ impl CompressedCipherText {
     }
 
     pub fn x(&self) -> WrappedCompressedRistretto {
-        CompressedRistretto::from_slice(&self.0[0..32]).into()
+        CompressedRistretto::from_slice(&self.0[0..32]).unwrap_or_default().into()
     }
 
     pub fn y(&self) -> WrappedCompressedRistretto {
-        CompressedRistretto::from_slice(&self.0[32..64]).into()
+        CompressedRistretto::from_slice(&self.0[32..64]).unwrap_or_default().into()
     }
 
     pub fn decompress(&self) -> CipherText {
@@ -396,7 +396,7 @@ impl ElgamalSecretKey {
         // value * h = Y - X / secret_key
         let value_h = *cipher_text.y - self.invert() * *cipher_text.x;
         // Brute force all possible values to find the one that matches value * h.
-        let mut result = Scalar::zero() * gens.B;
+        let mut result = Scalar::ZERO * gens.B;
         for v in 0..Balance::max_value() {
             if result == value_h {
                 return Ok(v);
@@ -478,7 +478,7 @@ impl ElgamalSecretKey {
 
         const CHUNK_SIZE: Balance = 64 * 1024; // Needs to be a power of two.
         const CHUNK_COUNT: Balance = Balance::max_value() / CHUNK_SIZE;
-        let mut tmp = Scalar::zero() * gens.B;
+        let mut tmp = Scalar::ZERO * gens.B;
         // Search the first chunk.
         for v in 0..CHUNK_SIZE {
             if tmp == value_h {
@@ -631,7 +631,7 @@ mod tests {
 
         // Test encrypting balance.
         let balance: Balance = 256;
-        let blinding = Scalar::zero();
+        let blinding = Scalar::ZERO;
         let balance_witness = CommitmentWitness {
             value: balance.into(),
             blinding,

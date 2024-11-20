@@ -26,12 +26,12 @@ pub fn bad_public_key() {
 
     let gens = PedersenGens::default();
 
-    let refresh_blinding = Scalar::one();
+    let refresh_blinding = Scalar::ONE;
     let y_diff = *sender_init_balance.y - (refresh_blinding * gens.B_blinding);
 
     let mut transcript = Transcript::new(ENCRYPTION_PROOFS_LABEL);
 
-    let z = Scalar::zero(); //Scalar::random(&mut rng);
+    let z = Scalar::ZERO; //Scalar::random(&mut rng);
     let a = y_diff;
     let b = gens.B_blinding;
     let initial_message = CipherTextRefreshmentInitialMessage {

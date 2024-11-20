@@ -6,10 +6,6 @@ description = "Polymesh confidential assets."
 authors = [ "Polymesh Association" ]
 license-file = "LICENSE.txt"
 
-[patch.crates-io]
-bulletproofs = { version = "4.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "polymesh" }
-curve25519-dalek-ng = { git = "https://github.com/atouchet/curve25519-dalek-ng.git", branch = "simd" }
-
 [dependencies]
 # SCALE
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive", "max-encoded-len"] }
@@ -25,13 +21,13 @@ log = "0.4"
 uuid = { version = "1.6", default-features = false }
 
 # Crypto
-sha3 = { version = "0.9", default-features = false, optional = true }
+sha3 = { version = "0.10", default-features = false, optional = true }
 
 rand_core = { version = "0.6", default-features = false}
 rand = { version = "0.8", default-features = false }
 
-curve25519-dalek = { package = "curve25519-dalek-ng", version = "4", default-features = false, features = ["alloc"] }
-bulletproofs = { version = "4.0.0", default-features = false }
+curve25519-dalek = { version = "4", default-features = false, features = ["alloc"] }
+bulletproofs = { version = "5.0.0", default-features = false }
 
 merlin = { version = "3.0.0", default-features = false }
 
@@ -42,30 +38,30 @@ lazy_static = { version = "1.4.0", optional = true }
 
 [dev-dependencies]
 # Crypto
-sha3 = { version = "0.9", default-features = false }
+sha3 = { version = "0.10", default-features = false }
 
 wasm-bindgen-test = { version = "0.3.10"}
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 criterion = { version = "0.3" }
 
 [features]
-default = ["std", "u64_backend", "rayon", "discrete_log"]
-nightly = ["curve25519-dalek/nightly"]
+default = ["std", "rayon", "discrete_log"]
+nightly = []
 
 # Discrete log Elgamal decryption.
 discrete_log = ["bincode", "itertools", "lazy_static"]
 
 # Backends
-u32_backend = ["curve25519-dalek/u32_backend", "bulletproofs/u32_backend"]
-u64_backend = ["curve25519-dalek/u64_backend", "bulletproofs/u64_backend"]
-avx2_backend = ["curve25519-dalek/avx2_backend", "bulletproofs/avx2_backend"]
-simd_backend = ["curve25519-dalek/simd_backend", "bulletproofs/simd_backend"]
+u32_backend = []
+u64_backend = []
+avx2_backend = []
+simd_backend = []
 
 serde_all = ["serde", "curve25519-dalek/serde"]
 
 alloc = ["rand_core/alloc", "rand/alloc", "curve25519-dalek/alloc"]
 
-no_std = ["u64_backend"]
+no_std = []
 std = [
  # General and optional
  "serde_all",

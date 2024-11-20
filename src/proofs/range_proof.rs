@@ -25,7 +25,7 @@ impl InRangeProof {
     pub fn build<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         let pc_gens = PedersenGens::default();
         let range = 32;
-        Self::prove(&pc_gens, 0, Scalar::one(), range, rng).expect("This shouldn't happen.")
+        Self::prove(&pc_gens, 0, Scalar::ONE, range, rng).expect("This shouldn't happen.")
     }
 
     fn bp_gens(len: usize) -> BulletproofGens {

@@ -147,7 +147,7 @@ pub fn bad_refreshment2() {
     );
     // Set `z` to zero:
     if let Some(proof) = &mut proof_gen.balance_refreshed_same_proof {
-        proof.1 .0 = Scalar::zero().into();
+        proof.1 .0 = Scalar::ZERO.into();
     }
     eprintln!(
         "-- refreshment proof: {:?}",
