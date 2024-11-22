@@ -190,11 +190,15 @@ impl CompressedCipherText {
     }
 
     pub fn x(&self) -> WrappedCompressedRistretto {
-        CompressedRistretto::from_slice(&self.0[0..32]).unwrap_or_default().into()
+        CompressedRistretto::from_slice(&self.0[0..32])
+            .unwrap_or_default()
+            .into()
     }
 
     pub fn y(&self) -> WrappedCompressedRistretto {
-        CompressedRistretto::from_slice(&self.0[32..64]).unwrap_or_default().into()
+        CompressedRistretto::from_slice(&self.0[32..64])
+            .unwrap_or_default()
+            .into()
     }
 
     pub fn decompress(&self) -> CipherText {
