@@ -1,10 +1,14 @@
 [package]
 name = "confidential_assets"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Polymesh confidential assets."
 authors = [ "Polymesh Association" ]
 license-file = "LICENSE.txt"
+
+[patch.crates-io]
+bulletproofs = { version = "5.0.0", git = "https://github.com/PolymeshAssociation/bulletproofs", branch = "v5.0.0" }
+#bulletproofs = { path = "../bulletproofs/" }
 
 [dependencies]
 # SCALE
@@ -51,20 +55,18 @@ nightly = []
 # Discrete log Elgamal decryption.
 discrete_log = ["bincode", "itertools", "lazy_static"]
 
-# Backends
-u32_backend = []
-u64_backend = []
-avx2_backend = []
-simd_backend = []
-
-serde_all = ["serde", "curve25519-dalek/serde"]
+serde = [
+  "dep:serde",
+  "curve25519-dalek/serde",
+  "bulletproofs/serde",
+]
 
 alloc = ["rand_core/alloc", "rand/alloc", "curve25519-dalek/alloc"]
 
 no_std = []
 std = [
  # General and optional
- "serde_all",
+ "serde",
  # Crypto
  "rand_core/std",
  "rand/std",
