@@ -172,7 +172,16 @@ fn bench_elgamal(c: &mut Criterion) {
         (100_000_000_000u64, "100,000,000,000"),
         (1_000_000_000_000u64, "1,000,000,000,000"),
         (10_000_000_000_000u64, "10,000,000,000,000"),
-        (100_000_000_000_000u64, "100,000,000,000,000"),
+        //(100_000_000_000_000u64, "100,000,000,000,000"),
+        (2u64.pow(40), "2^40"),
+        (2u64.pow(41), "2^41"),
+        (2u64.pow(42), "2^42"),
+        (2u64.pow(43), "2^43"),
+        (2u64.pow(44), "2^44"),
+        (2u64.pow(45), "2^45"),
+        (2u64.pow(46), "2^46"),
+        (2u64.pow(47), "2^47"),
+        (2u64.pow(48), "2^48"),
     ]
     .into_iter()
     .filter_map(|(value, s_value)| match Balance::try_from(value).ok() {
@@ -220,7 +229,7 @@ fn bench_elgamal(c: &mut Criterion) {
             let secs = now.elapsed().as_secs_f32();
             println!("{:.3?} secs", secs);
             // Stop if elapsed time above 1 second.
-            if secs > 1.0 {
+            if secs > 190.0 {
                 break;
             }
         }
